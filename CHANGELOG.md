@@ -23,6 +23,18 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- `on_busy?: 'wait' | 'cancel'` option on `invoke()`, `stream()` and `wsStream()`, sent as a
+  top-level request field (in the WebSocket input object next to `recursion_limit`). It tells
+  the server what to do when another run is active on the same thread: wait up to 30 s
+  (server default) or cancel the running run. Needs a `10xgraph-api` version that supports it.
+- `resume?: unknown` and `interrupt_id?: string` options on `invoke()`, `stream()` and
+  `wsStream()`. `interrupt_id` must be the id of the interrupt being answered. The client does
+  not track interrupt ids itself, so pass the id you got from the server. On `invoke()` and
+  `stream()` they are sent on the first request of a call only.
+- `ConflictError` (HTTP 409, `errorCode` `'CONFLICT'`), exported from the package root. The
+  server answers 409 when the thread stays busy or when `interrupt_id` does not match the
+  open interrupt. The client never retries it. Error bodies of the form `{"detail": "..."}`
+  (no envelope) now produce a typed error with that message instead of throwing a `TypeError`.
 - `deleteFile(fileId)` wraps the new `DELETE /v1/files/{file_id}` route (permission
   `files:delete`, owner only). It resolves to `{ data: { file_id, deleted: true }, metadata }`.
   The server returns 404 "File not found" when the file does not exist or belongs to someone

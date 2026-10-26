@@ -595,6 +595,9 @@ export class TenxGraphClient {
       initial_state?: Record<string, any>;
       config?: Record<string, any>;
       recursion_limit?: number;
+      on_busy?: 'wait' | 'cancel';
+      resume?: unknown;
+      interrupt_id?: string;
       response_granularity?: 'full' | 'partial' | 'low';
       onPartialResult?: InvokeCallback;
     }
@@ -610,6 +613,9 @@ export class TenxGraphClient {
       initial_state: options?.initial_state,
       config: options?.config,
       recursion_limit: options?.recursion_limit || 25,
+      on_busy: options?.on_busy,
+      resume: options?.resume,
+      interrupt_id: options?.interrupt_id,
       response_granularity: options?.response_granularity || 'full',
     };
 
@@ -647,6 +653,9 @@ export class TenxGraphClient {
       initial_state?: Record<string, any>;
       config?: Record<string, any>;
       recursion_limit?: number;
+      on_busy?: 'wait' | 'cancel';
+      resume?: unknown;
+      interrupt_id?: string;
       response_granularity?: 'full' | 'partial' | 'low';
     }
   ): AsyncGenerator<StreamChunk, void, unknown> {
@@ -661,6 +670,9 @@ export class TenxGraphClient {
       initial_state: options?.initial_state,
       config: options?.config,
       recursion_limit: options?.recursion_limit || 25,
+      on_busy: options?.on_busy,
+      resume: options?.resume,
+      interrupt_id: options?.interrupt_id,
       response_granularity: options?.response_granularity || 'low',
     };
 
@@ -710,6 +722,9 @@ export class TenxGraphClient {
       initial_state?: Record<string, any>;
       config?: Record<string, any>;
       recursion_limit?: number;
+      on_busy?: 'wait' | 'cancel';
+      resume?: unknown;
+      interrupt_id?: string;
       response_granularity?: 'full' | 'partial' | 'low';
     }
   ): AsyncGenerator<StreamChunk, void, unknown> {
@@ -723,6 +738,9 @@ export class TenxGraphClient {
       initial_state: options?.initial_state,
       config: options?.config,
       recursion_limit: options?.recursion_limit ?? 25,
+      on_busy: options?.on_busy,
+      resume: options?.resume,
+      interrupt_id: options?.interrupt_id,
       response_granularity: options?.response_granularity ?? 'low',
     };
 

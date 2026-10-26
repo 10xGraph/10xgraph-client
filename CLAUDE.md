@@ -68,6 +68,11 @@ AG-UI clients) and `GET /v1/evals/runs[/{run_id}]` (dev-only playground view mod
 - **Graph lifecycle:** `ping()`, `graph()`, `stopGraph(threadId, config?)`,
   `fixGraph(threadId, config?)`, `graphStateSchema()`, `graphTools()`,
   `observability(threadId, runId?)`.
+- **Run options:** `invoke`, `stream` and `wsStream` accept `initial_state`, `config`,
+  `recursion_limit`, `response_granularity`, `on_busy` (`'wait' | 'cancel'`: what to do when the
+  thread already has an active run), and `resume` + `interrupt_id` (answer an open interrupt; the
+  id is caller-supplied, the client does not track interrupts). A 409 (thread busy, or
+  `interrupt_id` mismatch) throws `ConflictError` and is never retried; 422 throws `ValidationError`.
 - **Run:** `invoke(...)`, `stream(...)` (HTTP streaming), `wsStream(...)` (WebSocket),
   `realtime(init, options?)` (WebSocket audio-to-audio, transport-only; returns a `RealtimeSession`).
 - **Threads / checkpointer:** `threads()` / `threads(request)`, `threadDetails(id)`,

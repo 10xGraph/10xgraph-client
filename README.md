@@ -226,6 +226,10 @@ const result = await client.invoke(messages, {
 });
 ```
 
+Optional: `on_busy: 'wait' | 'cancel'` controls what happens when the thread already has an active
+run, and `resume` with `interrupt_id` answers an open interrupt. A 409 throws `ConflictError`
+(not retried automatically).
+
 ### `stream()`: real-time streaming
 
 ```typescript
