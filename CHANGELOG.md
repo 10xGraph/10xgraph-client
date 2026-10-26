@@ -19,6 +19,29 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [Unreleased]
+
+### Added
+
+- `updateThreadMessageFeedback(threadId, messageId, feedback)` wraps the new
+  `PUT /v1/threads/{thread_id}/messages/{message_id}` route. It replaces
+  `message.metadata.feedback` with the given JSON object and changes nothing else on the
+  message. The server rejects feedback over 8192 serialized bytes or nested deeper than 10
+  levels (HTTP 422), returns 404 if the message is not in the thread and 501 if its core
+  library is too old. It returns the updated message in the same shape as `singleMessage`.
+  Types: `UpdateThreadMessageFeedbackRequest`, `UpdateThreadMessageFeedbackResponse`,
+  `UpdateThreadMessageFeedbackContext`.
+
+### Deprecated
+
+- `addThreadMessages` (`POST /v1/threads/{thread_id}/messages`) requires the
+  `checkpointer:import` scope (admin only) in 10xgraph-api releases after 0.9.0, so a normal user gets
+  403, and the server now rejects assistant and system role messages on normal client
+  paths. Use `updateThreadMessageFeedback` to attach feedback to a message. The method is
+  kept and still works for admin tokens.
+
+---
+
 ## [0.6.0] - 2026-10-10
 
 **First release as `10xgraph-client`.** The package formerly published as

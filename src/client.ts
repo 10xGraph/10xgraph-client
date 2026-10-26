@@ -51,6 +51,12 @@ import {
   DeleteThreadMessageResponse,
 } from './endpoints/deleteThreadMessage.js';
 import {
+  updateThreadMessageFeedback,
+  UpdateThreadMessageFeedbackContext,
+  UpdateThreadMessageFeedbackRequest,
+  UpdateThreadMessageFeedbackResponse,
+} from './endpoints/updateThreadMessageFeedback.js';
+import {
   deleteThread,
   DeleteThreadContext,
   DeleteThreadRequest,
@@ -457,6 +463,10 @@ export class TenxGraphClient {
 
   /**
    * Add messages to a specific thread checkpoint
+   *
+   * @deprecated Requires the `checkpointer:import` scope (admin only) in 10xgraph-api releases after 0.9.0.
+   * Use `updateThreadMessageFeedback` to attach feedback to a message.
+   *
    * @param threadId - The ID of the thread to add messages to
    * @param messages - Array of messages to add to the checkpoint
    * @param config - Configuration map for the checkpoint
@@ -522,6 +532,30 @@ export class TenxGraphClient {
     };
 
     return deleteThreadMessage(context, request);
+  }
+
+  /**
+   * Replace the feedback attached to a message (`message.metadata.feedback`).
+   * Nothing else on the message changes.
+   * @param threadId - The ID of the thread
+   * @param messageId - The ID of the message to attach feedback to
+   * @param feedback - Any JSON object, at most 8192 serialized bytes and nesting depth 10
+   * @returns UpdateThreadMessageFeedbackResponse containing the updated message
+   */
+  async updateThreadMessageFeedback(
+    threadId: string | number,
+    messageId: string,
+    feedback: Record<string, any>
+  ): Promise<UpdateThreadMessageFeedbackResponse> {
+    const context = this.createContext<UpdateThreadMessageFeedbackContext>();
+
+    const request: UpdateThreadMessageFeedbackRequest = {
+      threadId,
+      messageId,
+      feedback,
+    };
+
+    return updateThreadMessageFeedback(context, request);
   }
 
   /**

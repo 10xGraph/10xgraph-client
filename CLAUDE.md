@@ -40,7 +40,7 @@ Entry point: `src/index.ts` -> `dist/index.js`. Source map:
 | `src/message.ts` | Message + content-block model mirroring the Python core (`TextBlock`, `ImageBlock`, `AudioBlock`, `VideoBlock`, `DocumentBlock`, `DataBlock`, `ToolCallBlock`, `RemoteToolCallBlock`, `MediaRef`, `AnnotationRef`, ...)                                                                                                                                                                                                                                  |
 | `src/request.ts` | Low-level request/auth helpers; `TenxGraphAuth` (Bearer / Basic / Header), `RequestContext`                                                                                                                                                                                                                                                                                                                                                              |
 | `src/errors.ts`  | Error types                                                                                                                                                                                                                                                                                                                                                                                                                                              |
-| `src/endpoints/` | One file per endpoint (request/response types + call impl): invoke, stream, wsStream, graph, graphTools, observability, stopGraph, fixGraph, stateSchema, threads, threadDetails, threadState, updateThreadState, clearThreadState, threadMessages, addThreadMessages, threadMessage, deleteThreadMessage, deleteThread, storeMemory, searchMemory, getMemory, updateMemory, deleteMemory, listMemories, forgetMemories, files, metadata, ping, realtime |
+| `src/endpoints/` | One file per endpoint (request/response types + call impl): invoke, stream, wsStream, graph, graphTools, observability, stopGraph, fixGraph, stateSchema, threads, threadDetails, threadState, updateThreadState, clearThreadState, threadMessages, addThreadMessages, threadMessage, deleteThreadMessage, updateThreadMessageFeedback, deleteThread, storeMemory, searchMemory, getMemory, updateMemory, deleteMemory, listMemories, forgetMemories, files, metadata, ping, realtime |
 | `src/ws.ts`      | Shared WebSocket plumbing: subprotocol auth, URL building, injectable impl                                                                                                                                                                                                                                                                                                                                                                               |
 
 ## `TenxGraphClient`
@@ -72,7 +72,8 @@ AG-UI clients) and `GET /v1/evals/runs[/{run_id}]` (dev-only playground view mod
   `realtime(init, options?)` (WebSocket audio-to-audio, transport-only; returns a `RealtimeSession`).
 - **Threads / checkpointer:** `threads()` / `threads(request)`, `threadDetails(id)`,
   `threadState(id)`, `updateThreadState(...)`, `clearThreadState(id)`, `threadMessages(...)`,
-  `addThreadMessages(...)`, `singleMessage(...)`, `deleteMessage(...)`, `deleteThread(...)`.
+  `addThreadMessages(...)` (deprecated, admin-only), `singleMessage(...)`,
+  `updateThreadMessageFeedback(threadId, messageId, feedback)`, `deleteMessage(...)`, `deleteThread(...)`.
 - **Memory store:** `storeMemory`, `searchMemory`, `getMemory`, `updateMemory`, `deleteMemory`,
   `listMemories`.
 - **Files / multimodal:** `uploadFile(...)`, `getFile(id) -> Blob`, `getFileAccessUrl(id)`,
