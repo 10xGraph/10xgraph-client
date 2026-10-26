@@ -23,6 +23,10 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- `deleteFile(fileId)` wraps the new `DELETE /v1/files/{file_id}` route (permission
+  `files:delete`, owner only). It resolves to `{ data: { file_id, deleted: true }, metadata }`.
+  The server returns 404 "File not found" when the file does not exist or belongs to someone
+  else. Types: `DeleteFileResponse`, `DeleteFileData`, `DeleteFileContext`.
 - `updateThreadMessageFeedback(threadId, messageId, feedback)` wraps the new
   `PUT /v1/threads/{thread_id}/messages/{message_id}` route. It replaces
   `message.metadata.feedback` with the given JSON object and changes nothing else on the

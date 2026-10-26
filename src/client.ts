@@ -150,6 +150,11 @@ import {
   FileInfoResponse,
   MultimodalConfigResponse,
 } from './endpoints/files.js';
+import {
+  deleteFile as deleteFileEndpoint,
+  DeleteFileContext,
+  DeleteFileResponse,
+} from './endpoints/deleteFile.js';
 import { TenxGraphAuth, RequestContext } from './request.js';
 
 export interface TenxGraphConfig {
@@ -1013,6 +1018,19 @@ export class TenxGraphClient {
   async getFileAccessUrl(fileId: string): Promise<FileAccessUrlResponse> {
     const context = this.createContext<FileUploadContext>();
     return getFileAccessUrlEndpoint(context, fileId);
+  }
+
+  /**
+   * Delete a stored file. Only the file's owner can delete it.
+   * Requires the `files:delete` permission; the server returns 404 when the file
+   * does not exist or belongs to someone else.
+   *
+   * @param fileId - The file_id returned by `uploadFile`
+   * @returns DeleteFileResponse with `data.file_id` and `data.deleted`
+   */
+  async deleteFile(fileId: string): Promise<DeleteFileResponse> {
+    const context = this.createContext<DeleteFileContext>();
+    return deleteFileEndpoint(context, fileId);
   }
 
   /**

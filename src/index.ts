@@ -97,6 +97,8 @@ export * from './endpoints/forgetMemories.js';
 
 // Export file upload / multimodal types
 export * from './endpoints/files.js';
+// Export delete file types
+export * from './endpoints/deleteFile.js';
 
 // Export shared metadata types
 export * from './endpoints/metadata.js';
