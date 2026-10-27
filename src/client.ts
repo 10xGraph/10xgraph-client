@@ -553,7 +553,7 @@ export class TenxGraphClient {
   async updateThreadMessageFeedback(
     threadId: string | number,
     messageId: string,
-    feedback: Record<string, any>
+    feedback: Record<string, unknown>
   ): Promise<UpdateThreadMessageFeedbackResponse> {
     const context = this.createContext<UpdateThreadMessageFeedbackContext>();
 

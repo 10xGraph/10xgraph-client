@@ -12,7 +12,7 @@ export interface UpdateThreadMessageFeedbackRequest {
    * Any JSON object. Replaces `message.metadata.feedback`. The server rejects
    * feedback larger than 8192 serialized bytes or nested deeper than 10 levels (HTTP 422).
    */
-  feedback: Record<string, any>;
+  feedback: Record<string, unknown>;
 }
 
 export interface UpdateThreadMessageFeedbackResponse {
