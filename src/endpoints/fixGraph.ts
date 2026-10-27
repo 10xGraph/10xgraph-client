@@ -20,10 +20,15 @@ export interface FixGraphResponse {
 }
 
 /**
- * Fix graph state by removing messages with empty tool calls
+ * Repair a thread whose run stopped after the model asked for tools but before
+ * the results were saved.
  *
- * This is useful for cleaning up incomplete tool call messages that may have
- * failed or been interrupted during execution.
+ * The server removes an assistant message when any of its tool calls has no
+ * matching tool result (matched by tool call id), then removes tool result
+ * messages whose call no longer exists. If the thread is paused (interrupt,
+ * client tool call or human approval), the unanswered calls of the latest
+ * assistant message are kept. Messages without tool calls are never touched.
+ * When nothing needs fixing, removed_count is 0 and the state is not written.
  *
  * @param context - Request context with baseUrl, auth, timeout
  * @param request - Fix request with thread_id and optional config

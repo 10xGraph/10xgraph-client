@@ -332,9 +332,12 @@ export class TenxGraphClient {
   }
 
   /**
-   * Fix graph state by removing messages with empty tool calls
-   * This is useful for cleaning up incomplete tool call messages that may have
-   * failed or been interrupted during execution.
+   * Repair a thread whose run stopped after the model asked for tools but before
+   * the results were saved. The server removes assistant messages with unanswered
+   * tool calls (matched by tool call id) and tool results whose call no longer
+   * exists. Unanswered calls of the latest assistant message are kept while the
+   * thread is paused (interrupt, client tool call or human approval). When nothing
+   * needs fixing, removed_count is 0 and the state is not written.
    *
    * @param threadId - The ID of the thread to fix state for
    * @param config - Optional configuration for the fix operation
