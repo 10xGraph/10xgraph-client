@@ -50,6 +50,8 @@ export * from './endpoints/addThreadMessages.js';
 export * from './endpoints/threadMessage.js';
 // Export delete thread message Response types
 export * from './endpoints/deleteThreadMessage.js';
+// Export update thread message feedback types
+export * from './endpoints/updateThreadMessageFeedback.js';
 // Export delete thread Response types
 export * from './endpoints/deleteThread.js';
 // Export threads list Response types
@@ -95,6 +97,8 @@ export * from './endpoints/forgetMemories.js';
 
 // Export file upload / multimodal types
 export * from './endpoints/files.js';
+// Export delete file types
+export * from './endpoints/deleteFile.js';
 
 // Export shared metadata types
 export * from './endpoints/metadata.js';

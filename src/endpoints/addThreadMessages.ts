@@ -23,6 +23,10 @@ export interface AddThreadMessagesResponse {
   metadata: ResponseMetadata;
 }
 
+/**
+ * @deprecated Requires the `checkpointer:import` scope (admin only) in 10xgraph-api releases after 0.9.0.
+ * Use `updateThreadMessageFeedback` to attach feedback to a message.
+ */
 export async function addThreadMessages(
   context: AddThreadMessagesContext,
   request: AddThreadMessagesRequest

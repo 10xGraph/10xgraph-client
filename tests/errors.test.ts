@@ -5,6 +5,7 @@ import {
   AuthenticationError,
   PermissionError,
   NotFoundError,
+  ConflictError,
   ValidationError,
   ServerError,
   parseErrorResponse,
@@ -429,5 +430,37 @@ describe('createErrorFromResponse', () => {
     const error = await createErrorFromResponse(response);
     expect(error).toBeInstanceOf(BadRequestError);
     expect(error.message).toMatch(/HTTP error/);
+  });
+});
+
+describe('409 Conflict mapping', () => {
+  it('maps an enveloped 409 to ConflictError', async () => {
+    const response = new Response(
+      JSON.stringify({
+        metadata: { message: 'x', request_id: 'req-9', timestamp: '2026-10-26T00:00:00Z' },
+        error: { code: 'CONFLICT', message: 'thread is busy', details: [] },
+      }),
+      { status: 409, headers: { 'content-type': 'application/json' } }
+    );
+    const error = await createErrorFromResponse(response);
+    expect(error).toBeInstanceOf(ConflictError);
+    expect(error.statusCode).toBe(409);
+    expect(error.name).toBe('ConflictError');
+  });
+
+  it('maps a {"detail"} 409 body to ConflictError', async () => {
+    const response = new Response(JSON.stringify({ detail: 'thread is busy' }), {
+      status: 409,
+      headers: { 'content-type': 'application/json' },
+    });
+    const error = await createErrorFromResponse(response);
+    expect(error).toBeInstanceOf(ConflictError);
+    expect(error.message).toBe('thread is busy');
+  });
+
+  it('maps an unparseable 409 to ConflictError', async () => {
+    const response = new Response('nope', { status: 409 });
+    const error = await createErrorFromResponse(response, 'busy');
+    expect(error).toBeInstanceOf(ConflictError);
   });
 });

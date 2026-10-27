@@ -23,6 +23,9 @@ interface WsGraphInput {
   initial_state?: Record<string, any>;
   config?: Record<string, any>;
   recursion_limit?: number;
+  on_busy?: 'wait' | 'cancel';
+  resume?: unknown;
+  interrupt_id?: string;
   response_granularity?: string;
 }
 
@@ -151,6 +154,9 @@ export async function* wsStreamInvoke(
     initial_state: request.initial_state,
     config: request.config,
     recursion_limit: request.recursion_limit ?? 25,
+    on_busy: request.on_busy,
+    resume: request.resume,
+    interrupt_id: request.interrupt_id,
     response_granularity: request.response_granularity,
   };
 
@@ -229,6 +235,7 @@ export async function* wsStreamInvoke(
           tool_result: toolResults.map(serializeMessage),
           config: { ...(request.config ?? {}), thread_id: threadId },
           recursion_limit: request.recursion_limit ?? 25,
+          on_busy: request.on_busy,
           response_granularity: request.response_granularity,
         };
         // continue outerLoop → send resume request

@@ -149,6 +149,18 @@ export class NotFoundError extends TenxGraphError {
 }
 
 /**
+ * 409 Conflict Error
+ * Thrown when the thread is busy with another run, or when a resume's
+ * `interrupt_id` does not match the open interrupt. Never retried automatically.
+ */
+export class ConflictError extends TenxGraphError {
+  constructor(message: string, requestId: string, timestamp: string, details: ErrorDetail[] = []) {
+    super(message, 409, 'CONFLICT', requestId, timestamp, details);
+    this.name = 'ConflictError';
+  }
+}
+
+/**
  * 422 Validation Error
  * Thrown when the request data fails validation
  */
@@ -423,7 +435,16 @@ export async function parseErrorResponse(response: Response): Promise<ApiErrorRe
   try {
     const contentType = response.headers.get('content-type');
     if (contentType && contentType.includes('application/json')) {
-      return (await response.json()) as ApiErrorResponse;
+      const body = (await response.json()) as ApiErrorResponse | { detail?: unknown };
+      // FastAPI-style body such as {"detail": "thread is busy"} (no envelope)
+      if (body && !('error' in body) && typeof (body as { detail?: unknown }).detail === 'string') {
+        const detail = (body as { detail: string }).detail;
+        return {
+          metadata: { message: detail, request_id: 'unknown', timestamp: new Date().toISOString() },
+          error: { code: '', message: detail, details: [] },
+        };
+      }
+      return body as ApiErrorResponse;
     }
     return null;
   } catch {
@@ -481,6 +502,8 @@ export async function createErrorFromResponse(
         return new PermissionError(message, requestId, timestamp, details);
       case 404:
         return new NotFoundError(message, requestId, timestamp, details);
+      case 409:
+        return new ConflictError(message, requestId, timestamp, details);
       case 422:
         return new ValidationError(message, requestId, timestamp, details);
       case 500:
@@ -523,6 +546,8 @@ export async function createErrorFromResponse(
       return new PermissionError(message, 'unknown', timestamp);
     case 404:
       return new NotFoundError(message, 'unknown', timestamp);
+    case 409:
+      return new ConflictError(message, 'unknown', timestamp);
     case 422:
       return new ValidationError(message, 'unknown', timestamp);
     case 500:

@@ -51,6 +51,12 @@ import {
   DeleteThreadMessageResponse,
 } from './endpoints/deleteThreadMessage.js';
 import {
+  updateThreadMessageFeedback,
+  UpdateThreadMessageFeedbackContext,
+  UpdateThreadMessageFeedbackRequest,
+  UpdateThreadMessageFeedbackResponse,
+} from './endpoints/updateThreadMessageFeedback.js';
+import {
   deleteThread,
   DeleteThreadContext,
   DeleteThreadRequest,
@@ -144,6 +150,11 @@ import {
   FileInfoResponse,
   MultimodalConfigResponse,
 } from './endpoints/files.js';
+import {
+  deleteFile as deleteFileEndpoint,
+  DeleteFileContext,
+  DeleteFileResponse,
+} from './endpoints/deleteFile.js';
 import { TenxGraphAuth, RequestContext } from './request.js';
 
 export interface TenxGraphConfig {
@@ -321,9 +332,12 @@ export class TenxGraphClient {
   }
 
   /**
-   * Fix graph state by removing messages with empty tool calls
-   * This is useful for cleaning up incomplete tool call messages that may have
-   * failed or been interrupted during execution.
+   * Repair a thread whose run stopped after the model asked for tools but before
+   * the results were saved. The server removes assistant messages with unanswered
+   * tool calls (matched by tool call id) and tool results whose call no longer
+   * exists. Unanswered calls of the latest assistant message are kept while the
+   * thread is paused (interrupt, client tool call or human approval). When nothing
+   * needs fixing, removed_count is 0 and the state is not written.
    *
    * @param threadId - The ID of the thread to fix state for
    * @param config - Optional configuration for the fix operation
@@ -457,6 +471,10 @@ export class TenxGraphClient {
 
   /**
    * Add messages to a specific thread checkpoint
+   *
+   * @deprecated Requires the `checkpointer:import` scope (admin only) in 10xgraph-api releases after 0.9.0.
+   * Use `updateThreadMessageFeedback` to attach feedback to a message.
+   *
    * @param threadId - The ID of the thread to add messages to
    * @param messages - Array of messages to add to the checkpoint
    * @param config - Configuration map for the checkpoint
@@ -525,6 +543,30 @@ export class TenxGraphClient {
   }
 
   /**
+   * Replace the feedback attached to a message (`message.metadata.feedback`).
+   * Nothing else on the message changes.
+   * @param threadId - The ID of the thread
+   * @param messageId - The ID of the message to attach feedback to
+   * @param feedback - Any JSON object, at most 8192 serialized bytes and nesting depth 10
+   * @returns UpdateThreadMessageFeedbackResponse containing the updated message
+   */
+  async updateThreadMessageFeedback(
+    threadId: string | number,
+    messageId: string,
+    feedback: Record<string, unknown>
+  ): Promise<UpdateThreadMessageFeedbackResponse> {
+    const context = this.createContext<UpdateThreadMessageFeedbackContext>();
+
+    const request: UpdateThreadMessageFeedbackRequest = {
+      threadId,
+      messageId,
+      feedback,
+    };
+
+    return updateThreadMessageFeedback(context, request);
+  }
+
+  /**
    * Delete a specific thread
    * @param threadId - The ID of the thread to delete
    * @param config - Optional configuration map to send with the request body
@@ -556,6 +598,9 @@ export class TenxGraphClient {
       initial_state?: Record<string, any>;
       config?: Record<string, any>;
       recursion_limit?: number;
+      on_busy?: 'wait' | 'cancel';
+      resume?: unknown;
+      interrupt_id?: string;
       response_granularity?: 'full' | 'partial' | 'low';
       onPartialResult?: InvokeCallback;
     }
@@ -571,6 +616,9 @@ export class TenxGraphClient {
       initial_state: options?.initial_state,
       config: options?.config,
       recursion_limit: options?.recursion_limit || 25,
+      on_busy: options?.on_busy,
+      resume: options?.resume,
+      interrupt_id: options?.interrupt_id,
       response_granularity: options?.response_granularity || 'full',
     };
 
@@ -608,6 +656,9 @@ export class TenxGraphClient {
       initial_state?: Record<string, any>;
       config?: Record<string, any>;
       recursion_limit?: number;
+      on_busy?: 'wait' | 'cancel';
+      resume?: unknown;
+      interrupt_id?: string;
       response_granularity?: 'full' | 'partial' | 'low';
     }
   ): AsyncGenerator<StreamChunk, void, unknown> {
@@ -622,6 +673,9 @@ export class TenxGraphClient {
       initial_state: options?.initial_state,
       config: options?.config,
       recursion_limit: options?.recursion_limit || 25,
+      on_busy: options?.on_busy,
+      resume: options?.resume,
+      interrupt_id: options?.interrupt_id,
       response_granularity: options?.response_granularity || 'low',
     };
 
@@ -671,6 +725,9 @@ export class TenxGraphClient {
       initial_state?: Record<string, any>;
       config?: Record<string, any>;
       recursion_limit?: number;
+      on_busy?: 'wait' | 'cancel';
+      resume?: unknown;
+      interrupt_id?: string;
       response_granularity?: 'full' | 'partial' | 'low';
     }
   ): AsyncGenerator<StreamChunk, void, unknown> {
@@ -684,6 +741,9 @@ export class TenxGraphClient {
       initial_state: options?.initial_state,
       config: options?.config,
       recursion_limit: options?.recursion_limit ?? 25,
+      on_busy: options?.on_busy,
+      resume: options?.resume,
+      interrupt_id: options?.interrupt_id,
       response_granularity: options?.response_granularity ?? 'low',
     };
 
@@ -979,6 +1039,19 @@ export class TenxGraphClient {
   async getFileAccessUrl(fileId: string): Promise<FileAccessUrlResponse> {
     const context = this.createContext<FileUploadContext>();
     return getFileAccessUrlEndpoint(context, fileId);
+  }
+
+  /**
+   * Delete a stored file. Only the file's owner can delete it.
+   * Requires the `files:delete` permission; the server returns 404 when the file
+   * does not exist or belongs to someone else.
+   *
+   * @param fileId - The file_id returned by `uploadFile`
+   * @returns DeleteFileResponse with `data.file_id` and `data.deleted`
+   */
+  async deleteFile(fileId: string): Promise<DeleteFileResponse> {
+    const context = this.createContext<DeleteFileContext>();
+    return deleteFileEndpoint(context, fileId);
   }
 
   /**

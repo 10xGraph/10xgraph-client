@@ -14,6 +14,12 @@ export interface InvokeRequest {
   initial_state?: Record<string, any>;
   config?: Record<string, any>;
   recursion_limit?: number;
+  /** What to do when another run is active on the same thread (server default: 'wait'). */
+  on_busy?: 'wait' | 'cancel';
+  /** Value that answers an open interrupt. Send together with `interrupt_id`. */
+  resume?: unknown;
+  /** Id of the interrupt being answered by `resume`. */
+  interrupt_id?: string;
   response_granularity?: 'full' | 'partial' | 'low';
 }
 
@@ -153,6 +159,9 @@ export async function invoke(
   const initial_state = request.initial_state;
   const config = request.config;
   const response_granularity = request.response_granularity;
+  const on_busy = request.on_busy;
+  const resume = request.resume;
+  const interrupt_id = request.interrupt_id;
 
   // Main recursion loop
   while (iterations < recursion_limit) {
@@ -168,6 +177,9 @@ export async function invoke(
       initial_state: iterations === 1 ? initial_state : undefined,
       config,
       recursion_limit,
+      on_busy,
+      resume: iterations === 1 ? resume : undefined,
+      interrupt_id: iterations === 1 ? interrupt_id : undefined,
       response_granularity,
     };
 
