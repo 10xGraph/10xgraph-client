@@ -6,7 +6,7 @@ API server it talks to, see `agentflow-api/CLAUDE.md` (`10xgraph-api`); for the 
 
 - Package name (npm): `10xgraph-client` (formerly `@10xscale/agentflow-client`, last release 0.5.0)
 - Repo: https://github.com/10xGraph/10xgraph-client
-- Version: `1.0.0-rc.1` (0.6.0 was the first release under the 10xGraph name) · License: MIT · `"type": "module"` (ESM-first)
+- Version: `1.0.0-rc.2` (0.6.0 was the first release under the 10xGraph name) · License: MIT · `"type": "module"` (ESM-first)
 - Runtime: Node >= 18 (uses global `fetch`); also browser-targetable
 - Language: TypeScript 5+, built with `tsc` + Vite 7, tested with Vitest 3
 

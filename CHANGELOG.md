@@ -30,6 +30,40 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [1.0.0-rc.2] - Unreleased
+
+All changes are additive. Several new response fields need `10xgraph-api` 1.0.0rc1 or later and are
+typed optional, so the client still works against older servers.
+
+### Added
+
+- `signal?: AbortSignal` option on `invoke()`, `stream()` and `wsStream()`. Aborting it cancels the
+  in-flight request (and the open stream body or WebSocket). The call rejects with the abort error
+  (`name === 'AbortError'`), not the "Request timeout" error. A signal that is already aborted
+  rejects before any request is sent.
+- `listFiles(params?)` for `GET /v1/files` (`{ limit?, offset? }`), with `ListFilesRequest`,
+  `ListFilesResponse`, `FileListItem`. A media store that cannot enumerate files answers 501,
+  thrown as a `TenxGraphError`.
+- `has_more`, `offset` and `limit` on the `threads()` and `threadMessages()` response data.
+- Observability types for the run trace: per-span `status`, `error`, `inputs`, `outputs`, `step`,
+  `visit`, `total_tokens`, `reasoning_tokens`, `tool_name`, `tool_call_id`; run-level `error`,
+  `model`, `models`, `notes`; payload-level `enabled` and `reason` (`ObsEmptyReason`), so a UI can
+  tell "tracing is off" from "no runs yet". New `ObsMessageSummary` type.
+- `GraphInfo.realtime_options` (`GraphRealtimeOptions`): the Live init options the server honors, null
+  for non-realtime graphs.
+- Eval report types for the extended report: case `error` and `error` status, rubric
+  `kind`, `passed`, `threshold`, `details`, `error`, case `expected_detail`, run `counts`, and
+  `errors` on run summaries.
+
+### Fixed
+
+- `searchMemory()` no longer sends `memory_type: 'episodic'`, `category: ''` and
+  `score_threshold: 0` when you leave them unset. They are omitted so the server applies no filter,
+  and a search without a type now covers all memory types. Pass `memory_type` explicitly to keep
+  the old episodic-only behavior.
+
+---
+
 ## [1.0.0-rc.1] - 2026-10-28
 
 Release candidate for 1.0. The version is aligned with `10xgraph` and `10xgraph-api` 1.0, which

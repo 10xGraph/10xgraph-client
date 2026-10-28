@@ -15,6 +15,17 @@ export interface GraphEdge {
   target: string;
 }
 
+/** Live (realtime) init options the server honors. */
+export interface GraphRealtimeOptions {
+  /** Init-frame keys applied from the client (subset of voice, modalities, vad, system_prompt). */
+  client_overrides: string[];
+  /** Accepted values for the init `model`; empty means the client cannot choose. */
+  models: string[];
+  model_selectable: boolean;
+  /** The client may narrow (never widen) the agent's tool tags. */
+  tools_tags: boolean;
+}
+
 export interface GraphInfo {
   node_count: number;
   edge_count: number;
@@ -29,6 +40,8 @@ export interface GraphInfo {
   id_type: string;
   state_type: string;
   state_fields: string[];
+  /** Live options the server honors; null when the graph is not a realtime agent. */
+  realtime_options?: GraphRealtimeOptions | null;
 }
 
 export interface GraphData {

@@ -10,6 +10,8 @@ import { StreamChunk, StreamEventType, StreamRequest, serializeMessage } from '.
 
 export interface WsStreamContext extends RequestContext {
   toolExecutor?: ToolExecutor;
+  /** Caller-supplied signal; aborting it closes the socket and ends the stream. */
+  signal?: AbortSignal;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -73,6 +75,7 @@ export async function* wsStreamInvoke(
   context: WsStreamContext,
   request: StreamRequest
 ): AsyncGenerator<StreamChunk, void, unknown> {
+  context.signal?.throwIfAborted();
   const url = buildWsUrl(context, '/v1/graph/ws');
 
   if (context.debug) {
@@ -127,8 +130,26 @@ export async function* wsStreamInvoke(
     enqueue('close');
   });
 
+  const makeAbortError = (): Error => {
+    const err = new Error('The operation was aborted');
+    err.name = 'AbortError';
+    return err;
+  };
+  const onAbort = (): void => {
+    enqueue(makeAbortError());
+    if (ws.readyState === 1 || ws.readyState === 0) {
+      ws.close(1000);
+    }
+  };
+  context.signal?.addEventListener('abort', onAbort, { once: true });
+
   // Wait for the connection to open (or fail)
   await new Promise<void>((resolve, reject) => {
+    if (context.signal?.aborted) {
+      reject(makeAbortError());
+      return;
+    }
+    context.signal?.addEventListener('abort', () => reject(makeAbortError()), { once: true });
     // Numeric readyState literals (OPEN===1) instead of WebSocket.OPEN: the
     // global WebSocket may be absent on Node < 21 when a custom impl is injected.
     if (ws.readyState === 1) {
@@ -245,6 +266,7 @@ export async function* wsStreamInvoke(
       }
     }
   } finally {
+    context.signal?.removeEventListener('abort', onAbort);
     // CONNECTING===0, OPEN===1 (numeric literals; the global WebSocket may be
     // absent on Node < 21 when a custom impl is injected).
     if (ws.readyState === 1 || ws.readyState === 0) {

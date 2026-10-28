@@ -142,6 +142,9 @@ import {
   uploadFile as uploadFileEndpoint,
   getFile as getFileEndpoint,
   getFileInfo as getFileInfoEndpoint,
+  listFiles as listFilesEndpoint,
+  ListFilesRequest,
+  ListFilesResponse,
   getFileAccessUrl as getFileAccessUrlEndpoint,
   getMultimodalConfig as getMultimodalConfigEndpoint,
   FileUploadContext,
@@ -602,12 +605,15 @@ export class TenxGraphClient {
       resume?: unknown;
       interrupt_id?: string;
       response_granularity?: 'full' | 'partial' | 'low';
+      /** Abort to cancel the request (and the open stream or socket). */
+      signal?: AbortSignal;
       onPartialResult?: InvokeCallback;
     }
   ): Promise<InvokeResult> {
     const context: InvokeContext = {
       ...this.createContext<InvokeContext>(),
       toolExecutor: this.toolExecutor,
+      signal: options?.signal,
     };
 
     // Prepare request
@@ -660,11 +666,14 @@ export class TenxGraphClient {
       resume?: unknown;
       interrupt_id?: string;
       response_granularity?: 'full' | 'partial' | 'low';
+      /** Abort to cancel the request (and the open stream or socket). */
+      signal?: AbortSignal;
     }
   ): AsyncGenerator<StreamChunk, void, unknown> {
     const context: StreamContext = {
       ...this.createContext<StreamContext>(),
       toolExecutor: this.toolExecutor,
+      signal: options?.signal,
     };
 
     // Prepare request
@@ -729,11 +738,14 @@ export class TenxGraphClient {
       resume?: unknown;
       interrupt_id?: string;
       response_granularity?: 'full' | 'partial' | 'low';
+      /** Abort to cancel the request (and the open stream or socket). */
+      signal?: AbortSignal;
     }
   ): AsyncGenerator<StreamChunk, void, unknown> {
     const context: WsStreamContext = {
       ...this.createContext<WsStreamContext>(),
       toolExecutor: this.toolExecutor,
+      signal: options?.signal,
     };
 
     const request: StreamRequest = {
@@ -1021,6 +1033,15 @@ export class TenxGraphClient {
   async getFile(fileId: string): Promise<Blob> {
     const context = this.createContext<FileUploadContext>();
     return getFileEndpoint(context, fileId);
+  }
+
+  /**
+   * List the caller's uploaded files (GET /v1/files).
+   * Throws a TenxGraphError with status 501 when the media store cannot enumerate files.
+   */
+  async listFiles(params?: ListFilesRequest): Promise<ListFilesResponse> {
+    const context = this.createContext<FileUploadContext>();
+    return listFilesEndpoint(context, params);
   }
 
   /**
