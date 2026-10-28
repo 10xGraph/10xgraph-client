@@ -34,16 +34,18 @@ pnpm add 10xgraph-client
 
 ### Version compatibility
 
-The client versions independently of the Python packages. Pick versions by this table rather than
-by matching numbers:
+From 1.0, match `major.minor` across `10xgraph`, `10xgraph-api` and `10xgraph-client`; patch
+versions are independent (a patch is only a bug or security fix). Before 1.0, pick versions by
+this table:
 
 | `10xgraph-client` (npm)                | API server                                        | Core framework                 |
 | -------------------------------------- | ------------------------------------------------- | ------------------------------ |
+| 1.0.x                                  | `10xgraph-api` 1.0.x                              | `10xgraph` 1.0.x               |
 | 0.6.x                                  | `10xgraph-api` >= 0.7.0                           | `10xgraph` >= 0.10.0           |
 | `@10xscale/agentflow-client` 0.5.x     | `10xscale-agentflow-cli` >= 0.6.0, `10xgraph-api` | `10xscale-agentflow` >= 0.10.0 |
 | `@10xscale/agentflow-client` 0.3-0.4.x | `10xscale-agentflow-cli` >= 0.5.0                 | `10xscale-agentflow` >= 0.9.0  |
 
-The client tracks the **API server**, which is what it talks to. Client 0.6.x authenticates
+The client tracks the **API server**, which is what it talks to. Client 0.6.x and later authenticate
 WebSockets with the `10xgraph-bearer` subprotocol, which `10xgraph-api` 0.7.0 introduced. Against
 an older `10xscale-agentflow-cli` server, HTTP endpoints still work, but `wsStream()` and
 `realtime()` with bearer auth do not; stay on `@10xscale/agentflow-client@0.5.0` until the server

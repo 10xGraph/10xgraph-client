@@ -157,7 +157,8 @@ export async function invoke(
   let recursionLimitReached = false;
   let lastResponse: InvokeResponse | undefined;
   const initial_state = request.initial_state;
-  const config = request.config;
+  // Copied so a server-assigned thread_id can be added without touching the caller's object
+  let config = request.config;
   const response_granularity = request.response_granularity;
   const on_busy = request.on_busy;
   const resume = request.resume;
@@ -190,6 +191,13 @@ export async function invoke(
     // Make the API call
     const response = await makeSingleInvokeCall(context, iterationRequest);
     lastResponse = response;
+
+    // The server assigns a thread id when the caller omits one; reuse it so the
+    // tool round-trip stays on the same thread. A caller-supplied id is never replaced.
+    const returnedThreadId = response.data.meta?.thread_id;
+    if (returnedThreadId && !config?.thread_id) {
+      config = { ...(config ?? {}), thread_id: returnedThreadId };
+    }
 
     if (context.debug) {
       console.info('TenxGraphClient: Invoke successful');

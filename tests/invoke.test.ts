@@ -318,3 +318,87 @@ describe('Invoke with Tool Execution', () => {
     expect(result.iterations).toBe(2);
   });
 });
+
+describe('Invoke thread id handling in the tool loop', () => {
+  const makeResponses = (firstThreadId: string) => {
+    const meta = (id: string, isNew: boolean) => ({ is_new_thread: isNew, thread_id: id });
+    const base = { request_id: 'r', timestamp: new Date().toISOString(), message: 'OK' };
+    return [
+      {
+        data: {
+          messages: [
+            {
+              message_id: '1',
+              role: 'assistant',
+              content: [
+                {
+                  type: 'remote_tool_call',
+                  id: 'call-1',
+                  name: 'test_tool',
+                  args: {},
+                  tool_type: 'remote',
+                },
+              ],
+              delta: false,
+              timestamp: Date.now(),
+              metadata: {},
+            },
+          ],
+          meta: meta(firstThreadId, true),
+        },
+        metadata: base,
+      },
+      {
+        data: {
+          messages: [
+            {
+              message_id: '2',
+              role: 'assistant',
+              content: [{ type: 'text', text: 'Done!' }],
+              delta: false,
+              timestamp: Date.now(),
+              metadata: {},
+            },
+          ],
+          meta: meta(firstThreadId, false),
+        },
+        metadata: base,
+      },
+    ];
+  };
+
+  const run = async (config?: Record<string, any>, serverId = 'server-thread-1') => {
+    const [first, second] = makeResponses(serverId);
+    const fetchMock = vi.fn();
+    global.fetch = fetchMock as any;
+    fetchMock
+      .mockResolvedValueOnce({ ok: true, json: async () => first })
+      .mockResolvedValueOnce({ ok: true, json: async () => second });
+
+    const client = new TenxGraphClient({ baseUrl: 'http://localhost:8000', debug: false });
+    client.registerToolHandler('test_tool', async () => ({ result: 'ok' }));
+
+    const messages = [Message.text_message('Hi', 'user')];
+    const result = await client.invoke(messages, config ? { config } : undefined);
+    return { fetchMock, result };
+  };
+
+  it('should reuse a server-assigned thread_id on tool result requests', async () => {
+    const { fetchMock, result } = await run();
+
+    expect(result.iterations).toBe(2);
+    const firstBody = JSON.parse(fetchMock.mock.calls[0][1].body);
+    const secondBody = JSON.parse(fetchMock.mock.calls[1][1].body);
+    expect(firstBody.config?.thread_id).toBeUndefined();
+    expect(secondBody.config.thread_id).toBe('server-thread-1');
+  });
+
+  it('should keep a caller-supplied thread_id and not mutate the caller config', async () => {
+    const callerConfig = { thread_id: 'caller-thread' };
+    const { fetchMock } = await run(callerConfig, 'server-thread-1');
+
+    const secondBody = JSON.parse(fetchMock.mock.calls[1][1].body);
+    expect(secondBody.config.thread_id).toBe('caller-thread');
+    expect(callerConfig).toEqual({ thread_id: 'caller-thread' });
+  });
+});

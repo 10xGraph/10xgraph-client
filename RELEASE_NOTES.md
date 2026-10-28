@@ -5,6 +5,59 @@ Human-facing notes for the current release. For the full history see
 
 ---
 
+## 1.0.0-rc.1: release candidate for 1.0
+
+Release candidate for 1.0, published to npm under the `next` dist-tag:
+
+```bash
+npm install 10xgraph-client@next
+```
+
+`npm install 10xgraph-client` still installs 0.6.0 until 1.0.0 is released. The client has no
+breaking change in this release.
+
+From 1.0, `major.minor` is identical across `10xgraph`, `10xgraph-api` and `10xgraph-client`.
+Use the client with a `10xgraph-api` of the same `major.minor`.
+
+### Upgrading alongside 10xgraph-api 1.0
+
+`10xgraph-api` 1.0 defaults `runs.thread_ids` to `"server"`. The server assigns thread ids, and
+a client that invents an id for a new thread gets HTTP 403 on `invoke()`, `stream()` and
+`wsStream()`. No code change is needed if you already let the server choose:
+
+- Omit `thread_id` from `config` on the first request of a conversation.
+- Reuse the id the server returns in `config.thread_id` on every later request: `result.meta.thread_id`
+  for `invoke()`, `chunk.thread_id` or `chunk.metadata.thread_id` for `stream()`. `wsStream()`
+  tracks the id for its own resume requests, but you keep it for your next call.
+- Operators who want the old behavior set `"runs": {"thread_ids": "client"}` in `10xgraph.json`.
+
+### Fixed
+
+The client-side tool loop on `invoke()` and `stream()` lost a server-assigned thread id: the
+requests that send tool results omitted it, so the server saw a new thread and the tool
+round-trip broke or the conversation split. The client now reuses the returned id. A `thread_id`
+you pass is never replaced, and your `config` object is not modified.
+
+### Added
+
+- `on_busy?: 'wait' | 'cancel'` on `invoke()`, `stream()` and `wsStream()`: what the server does
+  when another run is active on the same thread.
+- `resume` and `interrupt_id` options on `invoke()`, `stream()` and `wsStream()` to answer an
+  open interrupt.
+- `ConflictError` (HTTP 409), exported from the package root.
+- `deleteFile(fileId)` for `DELETE /v1/files/{file_id}`.
+- `updateThreadMessageFeedback(threadId, messageId, feedback)` for
+  `PUT /v1/threads/{thread_id}/messages/{message_id}`.
+
+### Deprecated
+
+- `addThreadMessages` now needs the `checkpointer:import` scope (admin only) on recent
+  `10xgraph-api` releases. Use `updateThreadMessageFeedback` to attach feedback to a message.
+
+See [CHANGELOG.md](CHANGELOG.md) for details.
+
+---
+
 ## 0.6.0: `@10xscale/agentflow-client` is now `10xgraph-client`
 
 Same client, new name. Agentflow is now **10xGraph**, and the npm package follows:

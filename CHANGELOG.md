@@ -16,10 +16,46 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - **Breaking changes are documented under a `### Breaking` heading**, with migration steps.
 - The package entry points (`main`, `module`, `types`, `exports`) are part of the contract.
   Changing them is a breaking change.
+- **From 1.0, `major.minor` is identical across `10xgraph`, `10xgraph-api` and
+  `10xgraph-client`.** Use the client with a `10xgraph-api` of the same `major.minor`.
+- **Patch numbers move independently.** A patch release contains only bug or security fixes.
+- **Any new feature means all three packages release the next `X.Y.0` together.** A package with
+  no changes in that release ships a "version alignment, no changes" entry.
+- **Breaking changes need a new major version** (2.0), after a deprecation that lasted at least
+  one minor release. The deprecated `AgentFlow*` aliases in `src/compat.ts` are removed in 2.0.
 
 ---
 
 ## [Unreleased]
+
+---
+
+## [1.0.0-rc.1] - 2026-10-28
+
+Release candidate for 1.0. The version is aligned with `10xgraph` and `10xgraph-api` 1.0, which
+ship as `1.0.0rc1` on PyPI; this package ships as `1.0.0-rc.1` on npm under the `next` tag, so
+`npm install 10xgraph-client` still installs 0.6.0 until 1.0.0 is released. The client itself has
+no breaking change in this release: the public API is the one listed under Added and Deprecated
+below, on top of 0.6.0.
+
+### Upgrading alongside 10xgraph-api 1.0
+
+`10xgraph-api` 1.0 defaults `runs.thread_ids` to `"server"`. The server now assigns thread ids,
+and a client that invents an id for a new thread gets HTTP 403 on `invoke()`, `stream()` and
+`wsStream()`. No client code change is needed if you already let the server choose:
+
+- On the first request of a conversation, omit `thread_id` from `config` (do not pass
+  `config: { thread_id: ... }`).
+- Read the id the server returns and reuse it in `config.thread_id` on every later request. For
+  `invoke()` it is `result.meta.thread_id` (`meta.is_new_thread` tells you it was just created).
+  For `stream()` it is `chunk.thread_id` or `chunk.metadata.thread_id` on the chunks. Over
+  `wsStream()` the client sends no id on the first request (logged as `thread_id=new`), tracks
+  the returned id itself and reuses it for its own resume requests; you still need to keep it
+  for your next `wsStream()` call.
+- Operators who want the old behavior set `"runs": {"thread_ids": "client"}` in `10xgraph.json`.
+
+Use the client with `10xgraph-api` of the same `major.minor` (see the README compatibility
+table).
 
 ### Added
 
@@ -55,6 +91,16 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   403, and the server now rejects assistant and system role messages on normal client
   paths. Use `updateThreadMessageFeedback` to attach feedback to a message. The method is
   kept and still works for admin tokens.
+
+### Fixed
+
+- Client-side tool loop on `invoke()` and `stream()` lost a server-assigned thread id. When you
+  omitted `config.thread_id` on the first request, the requests that send tool results also
+  omitted it, so `10xgraph-api` 1.0 treated each one as a new thread and the tool round-trip
+  broke or the conversation split. The client now reuses the id the server returns
+  (`meta.thread_id` on `invoke()`; `thread_id` or `metadata.thread_id` on `stream()` chunks) for
+  the following requests of the same call. A `thread_id` you pass is never replaced, and your
+  `config` object is not modified.
 
 ---
 
@@ -308,6 +354,8 @@ Initial entry in this changelog. Releases before `0.2.0` were not tracked here.
 - Added the realtime audio client (`client.realtime(...)` returning `RealtimeSession`).
 - Added dual ESM/CJS exports.
 
+[Unreleased]: https://github.com/10xGraph/10xgraph-client/compare/v1.0.0-rc.1...HEAD
+[1.0.0-rc.1]: https://github.com/10xGraph/10xgraph-client/compare/v0.6.0...v1.0.0-rc.1
 [0.6.0]: https://github.com/10xGraph/10xgraph-client/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/10xHub/agentflow-client/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/10xHub/agentflow-client/compare/v0.3.0...v0.4.0

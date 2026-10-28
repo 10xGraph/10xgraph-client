@@ -4,11 +4,11 @@
 
 | Version | Supported |
 | ------- | --------- |
-| `0.6.x` | Yes       |
-| `< 0.6` | No        |
+| `1.0.x` | Yes       |
+| `< 1.0` | No        |
 
-Only the latest minor release receives security fixes. `10xgraph-client` is
-pre-1.0; there are no long-term support branches yet.
+`10xgraph-client` is at 1.0 (release candidate `1.0.0-rc.1`). Only the latest
+minor release receives security fixes; there are no long-term support branches yet.
 
 ## Reporting a vulnerability
 

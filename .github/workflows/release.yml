@@ -69,9 +69,12 @@ jobs:
           generate_release_notes: true
           files: '*.tgz'
           fail_on_unmatched_files: true
+          prerelease: ${{ contains(github.ref_name, 'rc') }}
 
   # Publishing to npm stays a deliberate manual step (`npm publish`), matching how
-  # the Python packages are released. Uncomment to automate it, and set NPM_TOKEN.
+  # the Python packages are released. Pre-releases (rc) must be published with
+  # `npm publish --tag next` so they do not become `latest`.
+  # Uncomment to automate it, and set NPM_TOKEN.
   #
   # publish:
   #   needs: github-release

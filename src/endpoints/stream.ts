@@ -262,7 +262,8 @@ export async function* streamInvoke(
   let currentMessages = request.messages;
   let iterations = 0;
   const initial_state = request.initial_state;
-  const config = request.config;
+  // Copied so a server-assigned thread_id can be added without touching the caller's object
+  let config = request.config;
   const response_granularity = request.response_granularity;
   const on_busy = request.on_busy;
   const resume = request.resume;
@@ -335,6 +336,13 @@ export async function* streamInvoke(
       for await (const chunk of parseStreamChunks(reader, context.debug)) {
         // Yield every chunk to the caller
         yield chunk;
+
+        // The server assigns a thread id when the caller omits one; reuse it so the
+        // tool round-trip stays on the same thread. A caller-supplied id is never replaced.
+        const returnedThreadId: string | undefined = chunk.thread_id || chunk.metadata?.thread_id;
+        if (returnedThreadId && !config?.thread_id) {
+          config = { ...(config ?? {}), thread_id: returnedThreadId };
+        }
 
         // Also collect messages for tool execution check
         if (chunk.message) {

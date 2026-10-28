@@ -364,4 +364,73 @@ describe('Stream API', () => {
       expect(callCount).toBe(2);
     });
   });
+
+  describe('thread id handling in the tool loop', () => {
+    const run = async (config?: Record<string, any>) => {
+      let callCount = 0;
+      const bodies: any[] = [];
+      global.fetch = vi.fn().mockImplementation((_url: string, init: any) => {
+        callCount++;
+        bodies.push(JSON.parse(init.body));
+        const encoder = new TextEncoder();
+        const chunk =
+          callCount === 1
+            ? {
+                event: 'message',
+                thread_id: 'server-thread-1',
+                message: {
+                  message_id: '1',
+                  role: 'assistant',
+                  content: [{ type: 'remote_tool_call', name: 'test_tool', arguments: {} }],
+                },
+              }
+            : {
+                event: 'message',
+                thread_id: 'server-thread-1',
+                message: {
+                  message_id: '2',
+                  role: 'assistant',
+                  content: [{ type: 'text', text: 'Done!' }],
+                },
+              };
+        const stream = new ReadableStream({
+          start(controller) {
+            controller.enqueue(encoder.encode(JSON.stringify(chunk) + '\n'));
+            controller.close();
+          },
+        });
+        return Promise.resolve({ ok: true, body: stream } as Response);
+      });
+
+      client.registerTool({
+        node: 'test_node',
+        name: 'test_tool',
+        description: 'Test tool',
+        parameters: { type: 'object', properties: {}, required: [] },
+        handler: async () => ({ result: 'success' }),
+      });
+
+      const messages = [Message.text_message('Test', 'user')];
+      for await (const _chunk of client.stream(messages, config ? { config } : undefined)) {
+        // drain
+      }
+      return { callCount, bodies };
+    };
+
+    it('should reuse a server-assigned thread_id on tool result requests', async () => {
+      const { callCount, bodies } = await run();
+
+      expect(callCount).toBe(2);
+      expect(bodies[0].config?.thread_id).toBeUndefined();
+      expect(bodies[1].config.thread_id).toBe('server-thread-1');
+    });
+
+    it('should keep a caller-supplied thread_id and not mutate the caller config', async () => {
+      const callerConfig = { thread_id: 'caller-thread' };
+      const { bodies } = await run(callerConfig);
+
+      expect(bodies[1].config.thread_id).toBe('caller-thread');
+      expect(callerConfig).toEqual({ thread_id: 'caller-thread' });
+    });
+  });
 });
