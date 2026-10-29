@@ -26,7 +26,11 @@ export interface RealtimeInit {
    * `websocket.realtime_models`; otherwise the agent's own model is used.
    */
   model?: string;
-  /** Omit to let the session generate one (used for resume). */
+  /**
+   * Omit to let the server create the thread; the id arrives in the `session_started` event and
+   * is read from `session.threadId`. Pass an id to continue a thread (the server must allow it:
+   * under the default `runs.thread_ids: "server"` it must be one the server already knows).
+   */
   thread_id?: string;
   voice?: string;
   modalities?: ResponseModality | ResponseModality[];
@@ -40,6 +44,7 @@ export interface RealtimeInit {
 
 /** Downstream JSON events. Audio arrives separately as binary via the `audio` channel. */
 export type RealtimeEvent =
+  | { type: 'session_started'; thread_id: string }
   | { type: 'input_transcript'; text: string; finished: boolean }
   | { type: 'output_transcript'; text: string; finished: boolean }
   | { type: 'tool_call'; id: string; name: string; args: Record<string, unknown> }
@@ -95,25 +100,6 @@ type ChannelListener = (...args: never[]) => void;
 /** How long a connection must stay open before the reconnect budget is restored. */
 const STABLE_CONNECTION_MS = 10_000;
 
-function genThreadId(): string {
-  const c = (globalThis as { crypto?: { randomUUID?: () => string } }).crypto;
-  if (c?.randomUUID) {
-    return c.randomUUID();
-  }
-  // Fallback: timestamp-free, index-free pseudo-id is not required here because a
-  // dropped session reuses this same id; uniqueness across sessions is enough.
-  return 'rt-' + Math.abs(hashString(String(Date.now()))).toString(36);
-}
-
-function hashString(s: string): number {
-  let h = 0;
-  for (let i = 0; i < s.length; i++) {
-    h = (h << 5) - h + s.charCodeAt(i);
-    h |= 0;
-  }
-  return h;
-}
-
 /** Normalize an incoming binary frame (ArrayBuffer / typed array / Buffer) to Uint8Array. */
 function toUint8(data: unknown): Uint8Array | null {
   if (data instanceof ArrayBuffer) {
@@ -134,7 +120,11 @@ function toUint8(data: unknown): Uint8Array | null {
  * Mic capture and audio playback are the caller's responsibility.
  */
 export class RealtimeSession {
-  readonly threadId: string;
+  /**
+   * The thread this session runs on: the caller's `thread_id`, or the id the server created.
+   * `null` until the `session_started` event arrives, when the caller gave none.
+   */
+  threadId: string | null;
   resumptionHandle: string | null = null;
   ready: Promise<void>;
 
@@ -154,8 +144,9 @@ export class RealtimeSession {
 
   constructor(ctx: RealtimeContext, init: RealtimeInit, options?: RealtimeOptions) {
     this.ctx = ctx;
-    this.threadId = init.thread_id ?? genThreadId();
-    this.init = { ...init, thread_id: this.threadId };
+    this.threadId = init.thread_id ?? null;
+    this.init = { ...init };
+    if (this.threadId === null) delete this.init.thread_id;
 
     this.reconnectCfg = {
       enabled: options?.reconnect?.enabled ?? true,
@@ -325,6 +316,9 @@ export class RealtimeSession {
       if (this.ctx.debug) console.warn('TenxGraphClient [realtime]: bad JSON frame', data);
       return;
     }
+    if (parsed.type === 'session_started' && parsed.thread_id) {
+      this.threadId = parsed.thread_id;
+    }
     if (parsed.type === 'session_update') {
       this.resumptionHandle = parsed.resumption_handle ?? this.resumptionHandle;
     }
@@ -374,7 +368,9 @@ export class RealtimeSession {
     // Forward the latest resumption handle so the provider can resume server-side.
     this.init = {
       ...this.init,
-      thread_id: this.threadId,
+      // The server-given id, so the same thread continues; none yet means the first connect
+      // never got `session_started`, and the server makes a new one.
+      ...(this.threadId ? { thread_id: this.threadId } : {}),
       ...(this.resumptionHandle ? { resumption_handle: this.resumptionHandle } : {}),
     };
     try {

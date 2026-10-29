@@ -1028,6 +1028,7 @@ export class TenxGraphClient {
     config?: Record<string, any>;
     options?: Record<string, any>;
     limit?: number;
+    offset?: number;
     signal?: AbortSignal;
   }): Promise<ListMemoriesResponse> {
     const context = this.createContext<ListMemoriesContext>(options);
@@ -1036,6 +1037,7 @@ export class TenxGraphClient {
       config: options?.config,
       options: options?.options,
       limit: options?.limit,
+      offset: options?.offset,
     };
 
     return listMemoriesEndpoint(context, request);

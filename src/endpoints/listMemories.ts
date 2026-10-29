@@ -14,10 +14,16 @@ export interface ListMemoriesRequest {
   config?: Record<string, any>;
   options?: Record<string, any>;
   limit?: number;
+  /** Memories to skip, for paging. Use `next_offset` from the previous page. Needs 10xgraph-api with paging support. */
+  offset?: number;
 }
 
 export interface ListMemoriesData {
   memories: MemoryResult[];
+  /** True when more memories follow this page. Absent on servers without paging. */
+  has_more?: boolean;
+  /** Offset to request next, or null on the last page. */
+  next_offset?: number | null;
 }
 
 export interface ListMemoriesResponse {
@@ -39,11 +45,15 @@ export async function listMemories(
     const url = `${context.baseUrl}/v1/store/memories/list`;
 
     // Prepare request body
-    const body = {
+    // `offset` is sent only when given, so a call without it matches older servers.
+    const body: Record<string, unknown> = {
       config: request.config || {},
       options: request.options || {},
       limit: request.limit || 100,
     };
+    if (request.offset !== undefined) {
+      body.offset = request.offset;
+    }
 
     if (context.debug) {
       console.debug(

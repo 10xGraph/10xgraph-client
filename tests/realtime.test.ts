@@ -85,10 +85,36 @@ describe('RealtimeSession transport', () => {
     expect(JSON.parse(ws.sent[0])).toEqual({ model: 'm', thread_id: 't1', modalities: 'AUDIO' });
   });
 
-  it('generates a thread_id when the caller omits one', () => {
+  it('sends no thread_id when the caller omits one, and takes the server id', async () => {
     const s = newSession({ model: 'm' });
-    expect(typeof s.threadId).toBe('string');
-    expect(s.threadId.length).toBeGreaterThan(0);
+    const ws = MockWS.instances[0];
+    ws.open();
+    await s.ready;
+    expect(JSON.parse(ws.sent[0])).toEqual({ model: 'm' });
+    expect(s.threadId).toBeNull();
+    const seen: any[] = [];
+    s.on('session_started', (e) => seen.push(e));
+    ws.message(JSON.stringify({ type: 'session_started', thread_id: 'srv-7' }));
+    expect(s.threadId).toBe('srv-7');
+    expect(seen).toEqual([{ type: 'session_started', thread_id: 'srv-7' }]);
+  });
+
+  it('reuses the server-given thread_id on reconnect', async () => {
+    vi.useFakeTimers();
+    try {
+      const s = newSession({ model: 'm' });
+      const first = MockWS.instances[0];
+      first.open();
+      first.message(JSON.stringify({ type: 'session_started', thread_id: 'srv-7' }));
+      first.close(1006);
+      await vi.advanceTimersByTimeAsync(1000);
+      const second = MockWS.instances[1];
+      second.open();
+      expect(JSON.parse(second.sent[0])).toEqual({ model: 'm', thread_id: 'srv-7' });
+      expect(s.threadId).toBe('srv-7');
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('emits audio (as Uint8Array) for binary frames', () => {
