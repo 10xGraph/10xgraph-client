@@ -1,6 +1,11 @@
 import { ResponseMetadata } from './metadata.js';
 import { createErrorFromResponse } from '../errors.js';
-import { buildHeaders, getRequestCredentials, RequestContext } from '../request.js';
+import {
+  buildHeaders,
+  getRequestCredentials,
+  RequestContext,
+  fetchWithTimeout,
+} from '../request.js';
 
 export interface PingContext extends RequestContext {}
 
@@ -15,19 +20,13 @@ export async function ping(context: PingContext): Promise<PingResponse> {
       console.debug('TenxGraphClient: Pinging server at', context.baseUrl);
     }
 
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), context.timeout);
-
-    const response = await fetch(`${context.baseUrl}/ping`, {
+    const response = await fetchWithTimeout(context, `${context.baseUrl}/ping`, {
       method: 'GET',
       headers: buildHeaders(context as RequestContext, {
         'Content-Type': 'application/json',
       }),
       ...getRequestCredentials(context as RequestContext),
-      signal: controller.signal,
     });
-
-    clearTimeout(timeoutId);
 
     if (!response.ok) {
       console.warn(`TenxGraphClient: Ping failed with HTTP ${response.status}`);
@@ -45,11 +44,6 @@ export async function ping(context: PingContext): Promise<PingResponse> {
   } catch (error) {
     if (context.debug) {
       console.debug('TenxGraphClient: Ping failed:', error);
-    }
-
-    if ((error as Error).name === 'AbortError') {
-      console.warn(`TenxGraphClient: Ping timeout after ${context.timeout}ms`);
-      throw new Error(`Request timeout after ${context.timeout}ms`);
     }
 
     console.error('TenxGraphClient: Ping failed:', error);

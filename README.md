@@ -383,7 +383,7 @@ Your first pull request can be small. These are real, self-contained, and useful
 - **Sharpen a type or a doc comment.** If your editor's autocomplete misled you once, it will mislead the next person too.
 - **Turn a bug into a failing test.** Open it as a draft pull request; the fix can come later.
 
-From clone to a passing check (Node 18 or newer):
+From clone to a passing check (Node 20 or newer):
 
 ```bash
 git clone https://github.com/10xGraph/10xgraph-client.git

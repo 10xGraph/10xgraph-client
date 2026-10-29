@@ -1,6 +1,11 @@
 import { ResponseMetadata } from './metadata.js';
 import { MemoryType } from './storeMemory.js';
-import { buildHeaders, getRequestCredentials, RequestContext } from '../request.js';
+import {
+  buildHeaders,
+  getRequestCredentials,
+  RequestContext,
+  fetchWithTimeout,
+} from '../request.js';
 
 export interface ForgetMemoriesContext extends RequestContext {}
 
@@ -26,70 +31,49 @@ export async function forgetMemories(
   context: ForgetMemoriesContext,
   request: ForgetMemoriesRequest
 ): Promise<ForgetMemoriesResponse> {
-  try {
-    const url = `${context.baseUrl}/v1/store/memories/forget`;
+  const url = `${context.baseUrl}/v1/store/memories/forget`;
 
-    // Prepare request body - only include optional fields if provided
-    const body: Record<string, any> = {};
+  // Prepare request body - only include optional fields if provided
+  const body: Record<string, any> = {};
 
-    if (request.config) {
-      body.config = request.config;
-    }
-    if (request.options) {
-      body.options = request.options;
-    }
-    if (request.memory_type) {
-      body.memory_type = request.memory_type;
-    }
-    if (request.category) {
-      body.category = request.category;
-    }
-    if (request.filters) {
-      body.filters = request.filters;
-    }
-
-    if (context.debug) {
-      console.log('[DEBUG] Forget memories request:', body);
-    }
-
-    const controller = new AbortController();
-    // `ReturnType<typeof setTimeout>` rather than NodeJS.Timeout: this client runs in
-    // browsers too, and the NodeJS namespace would force consumers to install @types/node.
-    let timeoutId: ReturnType<typeof setTimeout> | undefined;
-
-    if (context.timeout > 0) {
-      timeoutId = setTimeout(() => controller.abort(), context.timeout);
-    }
-
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: buildHeaders(context as RequestContext, {
-        'Content-Type': 'application/json',
-      }),
-      ...getRequestCredentials(context as RequestContext),
-      body: JSON.stringify(body),
-      ...(context.timeout > 0 && { signal: controller.signal }),
-    });
-
-    if (timeoutId) {
-      clearTimeout(timeoutId);
-    }
-
-    if (!response.ok) {
-      throw new Error(`Forget memories failed: ${response.status} ${response.statusText}`);
-    }
-
-    const data: ForgetMemoriesResponse = await response.json();
-
-    if (context.debug) {
-      console.log('[DEBUG] Forget memories response:', data);
-    }
-
-    return data;
-  } catch (error) {
-    if ((error as Error).name === 'AbortError') {
-      throw error;
-    }
-    throw error;
+  if (request.config) {
+    body.config = request.config;
   }
+  if (request.options) {
+    body.options = request.options;
+  }
+  if (request.memory_type) {
+    body.memory_type = request.memory_type;
+  }
+  if (request.category) {
+    body.category = request.category;
+  }
+  if (request.filters) {
+    body.filters = request.filters;
+  }
+
+  if (context.debug) {
+    console.log('[DEBUG] Forget memories request:', body);
+  }
+
+  const response = await fetchWithTimeout(context, url, {
+    method: 'POST',
+    headers: buildHeaders(context as RequestContext, {
+      'Content-Type': 'application/json',
+    }),
+    ...getRequestCredentials(context as RequestContext),
+    body: JSON.stringify(body),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Forget memories failed: ${response.status} ${response.statusText}`);
+  }
+
+  const data: ForgetMemoriesResponse = await response.json();
+
+  if (context.debug) {
+    console.log('[DEBUG] Forget memories response:', data);
+  }
+
+  return data;
 }

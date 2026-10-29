@@ -1,6 +1,11 @@
 import { ResponseMetadata } from './metadata.js';
 import { createErrorFromResponse } from '../errors.js';
-import { buildHeaders, getRequestCredentials, RequestContext } from '../request.js';
+import {
+  buildHeaders,
+  getRequestCredentials,
+  RequestContext,
+  fetchWithTimeout,
+} from '../request.js';
 
 export interface StateSchemaContext extends RequestContext {}
 
@@ -57,20 +62,14 @@ export async function stateSchema(context: StateSchemaContext): Promise<StateSch
       console.debug('TenxGraphClient: Fetching state schema from', context.baseUrl);
     }
 
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), context.timeout);
-
-    const response = await fetch(`${context.baseUrl}/v1/graph:StateSchema`, {
+    const response = await fetchWithTimeout(context, `${context.baseUrl}/v1/graph:StateSchema`, {
       method: 'GET',
       headers: buildHeaders(context as RequestContext, {
         'Content-Type': 'application/json',
         accept: 'application/json',
       }),
       ...getRequestCredentials(context as RequestContext),
-      signal: controller.signal,
     });
-
-    clearTimeout(timeoutId);
 
     if (!response.ok) {
       console.warn(`TenxGraphClient: State schema fetch failed with HTTP ${response.status}`);
@@ -93,11 +92,6 @@ export async function stateSchema(context: StateSchemaContext): Promise<StateSch
   } catch (error) {
     if (context.debug) {
       console.debug('TenxGraphClient: State schema fetch failed:', error);
-    }
-
-    if ((error as Error).name === 'AbortError') {
-      console.warn(`TenxGraphClient: State schema fetch timeout after ${context.timeout}ms`);
-      throw new Error(`Request timeout after ${context.timeout}ms`);
     }
 
     console.error('TenxGraphClient: State schema fetch failed:', error);

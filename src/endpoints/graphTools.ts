@@ -1,6 +1,11 @@
 import { ResponseMetadata } from './metadata.js';
 import { createErrorFromResponse } from '../errors.js';
-import { buildHeaders, getRequestCredentials, RequestContext } from '../request.js';
+import {
+  buildHeaders,
+  getRequestCredentials,
+  RequestContext,
+  fetchWithTimeout,
+} from '../request.js';
 
 export interface GraphToolsContext extends RequestContext {}
 
@@ -41,20 +46,14 @@ export async function graphTools(context: GraphToolsContext): Promise<GraphTools
       console.debug('TenxGraphClient: Fetching graph tools from', context.baseUrl);
     }
 
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), context.timeout);
-
-    const response = await fetch(`${context.baseUrl}/v1/graph/tools`, {
+    const response = await fetchWithTimeout(context, `${context.baseUrl}/v1/graph/tools`, {
       method: 'GET',
       headers: buildHeaders(context as RequestContext, {
         'Content-Type': 'application/json',
         accept: 'application/json',
       }),
       ...getRequestCredentials(context as RequestContext),
-      signal: controller.signal,
     });
-
-    clearTimeout(timeoutId);
 
     if (!response.ok) {
       console.warn(`TenxGraphClient: Graph tools fetch failed with HTTP ${response.status}`);
@@ -77,11 +76,6 @@ export async function graphTools(context: GraphToolsContext): Promise<GraphTools
   } catch (error) {
     if (context.debug) {
       console.debug('TenxGraphClient: Graph tools fetch failed:', error);
-    }
-
-    if ((error as Error).name === 'AbortError') {
-      console.warn(`TenxGraphClient: Graph tools fetch timeout after ${context.timeout}ms`);
-      throw new Error(`Request timeout after ${context.timeout}ms`);
     }
 
     console.error('TenxGraphClient: Graph tools fetch failed:', error);

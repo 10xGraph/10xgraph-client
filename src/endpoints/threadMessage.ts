@@ -1,7 +1,13 @@
 import { ResponseMetadata } from './metadata.js';
 import { Message } from '../message.js';
 import { createErrorFromResponse } from '../errors.js';
-import { buildHeaders, getRequestCredentials, RequestContext } from '../request.js';
+import {
+  buildHeaders,
+  getRequestCredentials,
+  RequestContext,
+  fetchWithTimeout,
+  encodePathSegment,
+} from '../request.js';
 
 export interface ThreadMessageContext extends RequestContext {}
 
@@ -33,21 +39,15 @@ export async function threadMessage(
       );
     }
 
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), context.timeout);
+    const url = `${context.baseUrl}/v1/threads/${encodePathSegment(request.threadId)}/messages/${encodePathSegment(request.messageId)}`;
 
-    const url = `${context.baseUrl}/v1/threads/${request.threadId}/messages/${request.messageId}`;
-
-    const response = await fetch(url, {
+    const response = await fetchWithTimeout(context, url, {
       method: 'GET',
       headers: buildHeaders(context as RequestContext, {
         'Content-Type': 'application/json',
       }),
       ...getRequestCredentials(context as RequestContext),
-      signal: controller.signal,
     });
-
-    clearTimeout(timeoutId);
 
     if (!response.ok) {
       console.warn(`TenxGraphClient: Thread message fetch failed with HTTP ${response.status}`);

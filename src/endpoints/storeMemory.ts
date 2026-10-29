@@ -1,6 +1,11 @@
 import { ResponseMetadata } from './metadata.js';
 import { createErrorFromResponse } from '../errors.js';
-import { buildHeaders, getRequestCredentials, RequestContext } from '../request.js';
+import {
+  buildHeaders,
+  getRequestCredentials,
+  RequestContext,
+  fetchWithTimeout,
+} from '../request.js';
 
 export interface StoreMemoryContext extends RequestContext {}
 
@@ -44,9 +49,6 @@ export async function storeMemory(
       console.debug('TenxGraphClient: Storing memory with type', request.memory_type);
     }
 
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), context.timeout);
-
     const url = `${context.baseUrl}/v1/store/memories`;
 
     // Prepare request body
@@ -59,17 +61,14 @@ export async function storeMemory(
       metadata: request.metadata || {},
     };
 
-    const response = await fetch(url, {
+    const response = await fetchWithTimeout(context, url, {
       method: 'POST',
       headers: buildHeaders(context as RequestContext, {
         'Content-Type': 'application/json',
       }),
       ...getRequestCredentials(context as RequestContext),
       body: JSON.stringify(body),
-      signal: controller.signal,
     });
-
-    clearTimeout(timeoutId);
 
     if (!response.ok) {
       console.warn(`TenxGraphClient: Store memory failed with HTTP ${response.status}`);

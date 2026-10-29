@@ -1,6 +1,11 @@
 import { ResponseMetadata } from './metadata.js';
 import { createErrorFromResponse } from '../errors.js';
-import { buildHeaders, getRequestCredentials, RequestContext } from '../request.js';
+import {
+  buildHeaders,
+  getRequestCredentials,
+  RequestContext,
+  fetchWithTimeout,
+} from '../request.js';
 import { MemoryResult } from './searchMemory.js';
 
 export interface ListMemoriesContext extends RequestContext {}
@@ -31,9 +36,6 @@ export async function listMemories(
       });
     }
 
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), context.timeout);
-
     const url = `${context.baseUrl}/v1/store/memories/list`;
 
     // Prepare request body
@@ -50,7 +52,7 @@ export async function listMemories(
       );
     }
 
-    const response = await fetch(url, {
+    const response = await fetchWithTimeout(context, url, {
       method: 'POST',
       headers: buildHeaders(context as RequestContext, {
         'Content-Type': 'application/json',
@@ -58,10 +60,7 @@ export async function listMemories(
       }),
       ...getRequestCredentials(context as RequestContext),
       body: JSON.stringify(body),
-      signal: controller.signal,
     });
-
-    clearTimeout(timeoutId);
 
     if (!response.ok) {
       console.warn(`TenxGraphClient: List memories failed with HTTP ${response.status}`);
@@ -85,10 +84,6 @@ export async function listMemories(
 
     return data;
   } catch (error) {
-    if ((error as Error).name === 'AbortError') {
-      console.warn(`TenxGraphClient: List memories timeout after ${context.timeout}ms`);
-      throw new Error(`Request timeout after ${context.timeout}ms`);
-    }
     if (context.debug) {
       console.debug('TenxGraphClient: List memories failed:', error);
     }

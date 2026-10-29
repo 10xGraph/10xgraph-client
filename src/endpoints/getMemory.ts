@@ -1,6 +1,12 @@
 import { ResponseMetadata } from './metadata.js';
 import { createErrorFromResponse } from '../errors.js';
-import { buildHeaders, getRequestCredentials, RequestContext } from '../request.js';
+import {
+  buildHeaders,
+  getRequestCredentials,
+  RequestContext,
+  fetchWithTimeout,
+  encodePathSegment,
+} from '../request.js';
 import { MemoryResult } from './searchMemory.js';
 
 export interface GetMemoryContext extends RequestContext {}
@@ -29,10 +35,7 @@ export async function getMemory(
       console.debug('TenxGraphClient: Fetching memory with ID:', request.memoryId);
     }
 
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), context.timeout);
-
-    const url = `${context.baseUrl}/v1/store/memories/${request.memoryId}`;
+    const url = `${context.baseUrl}/v1/store/memories/${encodePathSegment(request.memoryId)}`;
 
     // Prepare request body
     const body = {
@@ -40,17 +43,14 @@ export async function getMemory(
       options: request.options || {},
     };
 
-    const response = await fetch(url, {
+    const response = await fetchWithTimeout(context, url, {
       method: 'POST',
       headers: buildHeaders(context as RequestContext, {
         'Content-Type': 'application/json',
       }),
       ...getRequestCredentials(context as RequestContext),
       body: JSON.stringify(body),
-      signal: controller.signal,
     });
-
-    clearTimeout(timeoutId);
 
     if (!response.ok) {
       console.warn(`TenxGraphClient: Get memory failed with HTTP ${response.status}`);

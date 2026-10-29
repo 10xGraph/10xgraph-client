@@ -224,9 +224,7 @@ describe('Ping Endpoint Tests', () => {
       abortError.name = 'AbortError';
       fetchMock.mockRejectedValue(abortError);
 
-      await expect(ping(debugContext)).rejects.toThrow();
-
-      expect(consoleWarnSpy).toHaveBeenCalledWith('TenxGraphClient: Ping timeout after 5000ms');
+      await expect(ping(debugContext)).rejects.toMatchObject({ name: 'RequestTimeoutError' });
     });
 
     it('should not log when debug is disabled', async () => {

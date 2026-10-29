@@ -288,11 +288,10 @@ describe('Delete Thread Endpoint Tests', () => {
           })
       );
 
-      await expect(deleteThread(slowContext, mockRequest)).rejects.toThrow();
-
-      expect(consoleWarnSpy).toHaveBeenCalledWith(
-        'TenxGraphClient: Delete thread timeout after 50ms'
-      );
+      await expect(deleteThread(slowContext, mockRequest)).rejects.toMatchObject({
+        name: 'RequestTimeoutError',
+        message: 'Request timeout after 50ms',
+      });
 
       consoleWarnSpy.mockRestore();
     });

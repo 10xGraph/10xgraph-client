@@ -1,13 +1,26 @@
 import { ResponseMetadata } from './metadata.js';
 import { AgentState } from '../agent.js';
 import { createErrorFromResponse } from '../errors.js';
-import { buildHeaders, getRequestCredentials, RequestContext } from '../request.js';
+import {
+  buildHeaders,
+  getRequestCredentials,
+  RequestContext,
+  fetchWithTimeout,
+  encodePathSegment,
+} from '../request.js';
 
 export interface UpdateThreadStateContext extends RequestContext {}
 
+/**
+ * State fields the server accepts on update. `context_summary` and `execution_meta` are
+ * rejected by the server, so they are not part of this type.
+ */
+export type UpdatableThreadState = Partial<Omit<AgentState, 'context_summary' | 'execution_meta'>> &
+  Record<string, any>;
+
 export interface UpdateThreadStateRequest {
   config: Record<string, any>;
-  state: AgentState;
+  state: UpdatableThreadState;
 }
 
 export interface UpdateThreadStateData {
@@ -30,21 +43,19 @@ export async function updateThreadState(
       console.debug(`TenxGraphClient: Request payload:`, JSON.stringify(request, null, 2));
     }
 
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), context.timeout);
-
-    const response = await fetch(`${context.baseUrl}/v1/threads/${threadId}/state`, {
-      method: 'PUT',
-      headers: buildHeaders(context as RequestContext, {
-        'Content-Type': 'application/json',
-        accept: 'application/json',
-      }),
-      ...getRequestCredentials(context as RequestContext),
-      body: JSON.stringify(request),
-      signal: controller.signal,
-    });
-
-    clearTimeout(timeoutId);
+    const response = await fetchWithTimeout(
+      context,
+      `${context.baseUrl}/v1/threads/${encodePathSegment(threadId)}/state`,
+      {
+        method: 'PUT',
+        headers: buildHeaders(context as RequestContext, {
+          'Content-Type': 'application/json',
+          accept: 'application/json',
+        }),
+        ...getRequestCredentials(context as RequestContext),
+        body: JSON.stringify(request),
+      }
+    );
 
     if (!response.ok) {
       console.warn(`TenxGraphClient: Thread state update failed with HTTP ${response.status}`);
@@ -68,11 +79,6 @@ export async function updateThreadState(
 
     return data;
   } catch (error) {
-    if ((error as Error).name === 'AbortError') {
-      console.warn(`TenxGraphClient: Thread state update timeout after ${context.timeout}ms`);
-      throw new Error(`Request timeout after ${context.timeout}ms`);
-    }
-
     if (context.debug) {
       console.debug(`TenxGraphClient: Thread state update failed:`, error);
     }

@@ -1,6 +1,12 @@
 import { ResponseMetadata } from './metadata.js';
 import { createErrorFromResponse } from '../errors.js';
-import { buildHeaders, getRequestCredentials, RequestContext } from '../request.js';
+import {
+  buildHeaders,
+  getRequestCredentials,
+  RequestContext,
+  fetchWithTimeout,
+  encodePathSegment,
+} from '../request.js';
 
 export interface ClearThreadStateContext extends RequestContext {}
 
@@ -24,20 +30,18 @@ export async function clearThreadState(
       console.debug(`TenxGraphClient: Clearing thread state for thread ${threadId}`);
     }
 
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), context.timeout);
-
-    const response = await fetch(`${context.baseUrl}/v1/threads/${threadId}/state`, {
-      method: 'DELETE',
-      headers: buildHeaders(context as RequestContext, {
-        'Content-Type': 'application/json',
-        accept: 'application/json',
-      }),
-      ...getRequestCredentials(context as RequestContext),
-      signal: controller.signal,
-    });
-
-    clearTimeout(timeoutId);
+    const response = await fetchWithTimeout(
+      context,
+      `${context.baseUrl}/v1/threads/${encodePathSegment(threadId)}/state`,
+      {
+        method: 'DELETE',
+        headers: buildHeaders(context as RequestContext, {
+          'Content-Type': 'application/json',
+          accept: 'application/json',
+        }),
+        ...getRequestCredentials(context as RequestContext),
+      }
+    );
 
     if (!response.ok) {
       console.warn(`TenxGraphClient: Thread state clear failed with HTTP ${response.status}`);
@@ -61,11 +65,6 @@ export async function clearThreadState(
 
     return data;
   } catch (error) {
-    if ((error as Error).name === 'AbortError') {
-      console.warn(`TenxGraphClient: Thread state clear timeout after ${context.timeout}ms`);
-      throw new Error(`Request timeout after ${context.timeout}ms`);
-    }
-
     if (context.debug) {
       console.debug(`TenxGraphClient: Thread state clear failed:`, error);
     }

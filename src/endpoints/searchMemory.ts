@@ -1,6 +1,11 @@
 import { ResponseMetadata } from './metadata.js';
 import { createErrorFromResponse } from '../errors.js';
-import { buildHeaders, getRequestCredentials, RequestContext } from '../request.js';
+import {
+  buildHeaders,
+  getRequestCredentials,
+  RequestContext,
+  fetchWithTimeout,
+} from '../request.js';
 import { MemoryType } from './storeMemory.js';
 
 export interface SearchMemoryContext extends RequestContext {}
@@ -70,9 +75,6 @@ export async function searchMemory(
       console.debug('TenxGraphClient: Searching memories with query:', request.query);
     }
 
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), context.timeout);
-
     const url = `${context.baseUrl}/v1/store/search`;
 
     // Prepare request body. memory_type, category and score_threshold have no default:
@@ -97,17 +99,14 @@ export async function searchMemory(
       body.score_threshold = request.score_threshold;
     }
 
-    const response = await fetch(url, {
+    const response = await fetchWithTimeout(context, url, {
       method: 'POST',
       headers: buildHeaders(context as RequestContext, {
         'Content-Type': 'application/json',
       }),
       ...getRequestCredentials(context as RequestContext),
       body: JSON.stringify(body),
-      signal: controller.signal,
     });
-
-    clearTimeout(timeoutId);
 
     if (!response.ok) {
       console.warn(`TenxGraphClient: Search memory failed with HTTP ${response.status}`);

@@ -1,6 +1,11 @@
 import { ResponseMetadata } from './metadata.js';
 import { createErrorFromResponse } from '../errors.js';
-import { buildHeaders, getRequestCredentials, RequestContext } from '../request.js';
+import {
+  buildHeaders,
+  getRequestCredentials,
+  RequestContext,
+  fetchWithTimeout,
+} from '../request.js';
 
 export interface StopGraphContext extends RequestContext {}
 
@@ -11,9 +16,19 @@ export interface StopGraphRequest {
 
 export interface StopGraphResponse {
   data: {
-    success: boolean;
-    message: string;
-    thread_id: string;
+    /** False when the thread has no checkpointer or no saved state. */
+    ok: boolean;
+    /** True when a run was active and a stop was requested. */
+    running?: boolean;
+    /** Why nothing was stopped, e.g. 'no-checkpointer' or 'no-state'. */
+    reason?: string;
+    /** @deprecated The server never sends this field. Use `ok`. */
+    success?: boolean;
+    /** @deprecated The server never sends this field. */
+    message?: string;
+    /** @deprecated The server never sends this field. */
+    thread_id?: string;
+    /** @deprecated The server never sends this field. */
     stopped_at?: string;
   };
   metadata: ResponseMetadata;
@@ -35,10 +50,7 @@ export async function stopGraph(
       console.debug('TenxGraphClient: Stopping graph execution for thread:', request.thread_id);
     }
 
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), context.timeout);
-
-    const response = await fetch(`${context.baseUrl}/v1/graph/stop`, {
+    const response = await fetchWithTimeout(context, `${context.baseUrl}/v1/graph/stop`, {
       method: 'POST',
       headers: buildHeaders(context as RequestContext, {
         'Content-Type': 'application/json',
@@ -46,10 +58,7 @@ export async function stopGraph(
       }),
       ...getRequestCredentials(context as RequestContext),
       body: JSON.stringify(request),
-      signal: controller.signal,
     });
-
-    clearTimeout(timeoutId);
 
     if (!response.ok) {
       console.warn(`TenxGraphClient: Stop graph failed with HTTP ${response.status}`);
@@ -72,11 +81,6 @@ export async function stopGraph(
   } catch (error) {
     if (context.debug) {
       console.debug('TenxGraphClient: Stop graph failed:', error);
-    }
-
-    if ((error as Error).name === 'AbortError') {
-      console.warn(`TenxGraphClient: Stop graph timeout after ${context.timeout}ms`);
-      throw new Error(`Request timeout after ${context.timeout}ms`);
     }
 
     console.error('TenxGraphClient: Stop graph failed:', error);

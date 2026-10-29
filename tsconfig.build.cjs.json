@@ -1,0 +1,11 @@
+{
+  "extends": "./tsconfig.build.json",
+  "compilerOptions": {
+    // Second declaration pass for `require` consumers: dist/cjs/package.json marks this tree
+    // as CommonJS, so TypeScript on node16/nodenext types the require() entry as CJS.
+    "module": "CommonJS",
+    "moduleResolution": "node10",
+    "declarationMap": false,
+    "outDir": "./dist/cjs"
+  }
+}
