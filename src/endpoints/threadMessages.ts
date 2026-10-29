@@ -14,6 +14,12 @@ export interface ThreadMessagesRequest {
 
 export interface ThreadMessagesData {
   messages: Message[];
+  /** True when more messages exist after this page. Absent on servers older than 1.0.0. */
+  has_more?: boolean;
+  /** Offset the server applied. */
+  offset?: number;
+  /** Limit the server applied (after its default and maximum clamp). */
+  limit?: number;
 }
 
 // Backward compatibility alias

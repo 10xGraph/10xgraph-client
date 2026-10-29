@@ -75,20 +75,27 @@ export async function searchMemory(
 
     const url = `${context.baseUrl}/v1/store/search`;
 
-    // Prepare request body with defaults
-    const body = {
+    // Prepare request body. memory_type, category and score_threshold have no default:
+    // when unset they are omitted so the server applies no filter on them.
+    const body: Record<string, unknown> = {
       config: request.config || {},
       options: request.options || {},
       query: request.query,
-      memory_type: request.memory_type || MemoryType.EPISODIC,
-      category: request.category || '',
       limit: request.limit !== undefined ? request.limit : 10,
-      score_threshold: request.score_threshold !== undefined ? request.score_threshold : 0,
       filters: request.filters || {},
       retrieval_strategy: request.retrieval_strategy || RetrievalStrategy.SIMILARITY,
       distance_metric: request.distance_metric || DistanceMetric.COSINE,
       max_tokens: request.max_tokens !== undefined ? request.max_tokens : 4000,
     };
+    if (request.memory_type !== undefined && request.memory_type !== null) {
+      body.memory_type = request.memory_type;
+    }
+    if (request.category !== undefined && request.category !== null) {
+      body.category = request.category;
+    }
+    if (request.score_threshold !== undefined && request.score_threshold !== null) {
+      body.score_threshold = request.score_threshold;
+    }
 
     const response = await fetch(url, {
       method: 'POST',

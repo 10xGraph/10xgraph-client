@@ -2,10 +2,17 @@ import { Message } from '../message.js';
 import { AgentState } from '../agent.js';
 import { ToolExecutor } from '../tools.js';
 import { createErrorFromResponse } from '../errors.js';
-import { buildHeaders, getRequestCredentials, RequestContext } from '../request.js';
+import {
+  buildHeaders,
+  getRequestCredentials,
+  linkAbortSignal,
+  RequestContext,
+} from '../request.js';
 
 export interface InvokeContext extends RequestContext {
   toolExecutor?: ToolExecutor;
+  /** Caller-supplied signal; aborting it cancels the in-flight request. */
+  signal?: AbortSignal;
 }
 
 // Invoke Request payload
@@ -81,6 +88,7 @@ async function makeSingleInvokeCall(
 ): Promise<InvokeResponse> {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), context.timeout);
+  const unlink = linkAbortSignal(controller, context.signal);
 
   try {
     const response = await fetch(`${context.baseUrl}/v1/graph/invoke`, {
@@ -95,6 +103,7 @@ async function makeSingleInvokeCall(
     });
 
     clearTimeout(timeoutId);
+    unlink();
 
     if (!response.ok) {
       console.warn(`TenxGraphClient: Invoke failed with HTTP ${response.status}`);
@@ -111,8 +120,13 @@ async function makeSingleInvokeCall(
     return data;
   } catch (error) {
     clearTimeout(timeoutId);
+    unlink();
 
     if ((error as Error).name === 'AbortError') {
+      if (context.signal?.aborted) {
+        // Cancelled by the caller, not a timeout: surface the abort as is.
+        throw error;
+      }
       console.warn(`TenxGraphClient: Invoke timeout after ${context.timeout}ms`);
       throw new Error(`Request timeout after ${context.timeout}ms`);
     }
@@ -166,6 +180,7 @@ export async function invoke(
 
   // Main recursion loop
   while (iterations < recursion_limit) {
+    context.signal?.throwIfAborted();
     iterations++;
 
     if (context.debug) {

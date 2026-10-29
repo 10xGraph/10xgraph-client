@@ -165,6 +165,82 @@ export async function getFile(ctx: FileUploadContext, fileId: string): Promise<B
 }
 
 // ---------------------------------------------------------------------------
+// List files (GET /v1/files)
+// ---------------------------------------------------------------------------
+export interface ListFilesRequest {
+  /** Page size (server default 50, maximum 200). */
+  limit?: number;
+  /** Number of files to skip. */
+  offset?: number;
+}
+
+export interface FileListItem {
+  file_id: string;
+  filename: string | null;
+  mime_type: string;
+  size_bytes: number;
+  url: string;
+  /** Unix seconds, or null when the store records no timestamp. */
+  created_at: number | null;
+}
+
+export interface ListFilesResponse {
+  data: {
+    files: FileListItem[];
+    has_more: boolean;
+    offset: number;
+    limit: number;
+  };
+  metadata?: {
+    request_id: string;
+    timestamp: string;
+    message: string;
+  };
+}
+
+/**
+ * List the caller's uploaded files. A store that cannot enumerate its files
+ * (for example a cloud store) answers 501, which is thrown as a TenxGraphError.
+ */
+export async function listFiles(
+  ctx: FileUploadContext,
+  params?: ListFilesRequest
+): Promise<ListFilesResponse> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), ctx.timeout);
+
+  try {
+    const query = new URLSearchParams();
+    if (params?.limit !== undefined) query.append('limit', String(params.limit));
+    if (params?.offset !== undefined) query.append('offset', String(params.offset));
+    const qs = query.toString();
+
+    const response = await fetch(`${ctx.baseUrl}/v1/files${qs ? `?${qs}` : ''}`, {
+      method: 'GET',
+      headers: buildHeaders(ctx as RequestContext),
+      ...getRequestCredentials(ctx as RequestContext),
+      signal: controller.signal,
+    });
+
+    clearTimeout(timeoutId);
+
+    if (!response.ok) {
+      const error = await createErrorFromResponse(
+        response,
+        'List files request failed',
+        '/v1/files',
+        'GET'
+      );
+      throw error;
+    }
+
+    return (await response.json()) as ListFilesResponse;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Get file info (metadata)
 // ---------------------------------------------------------------------------
 export async function getFileInfo(

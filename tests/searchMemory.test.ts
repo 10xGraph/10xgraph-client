@@ -160,7 +160,6 @@ describe('Search Memory Endpoint Tests', () => {
         memory_type: 'semantic',
         category: 'preferences',
         limit: 10,
-        score_threshold: 0,
         filters: {},
         retrieval_strategy: 'similarity',
         distance_metric: 'cosine',
@@ -850,6 +849,42 @@ describe('Search Memory Endpoint Tests', () => {
       const body = JSON.parse(options.body);
 
       expect(body.memory_type).toBe('procedural');
+    });
+  });
+
+  describe('Unset filters are omitted', () => {
+    it('omits memory_type, category and score_threshold when not given', async () => {
+      fetchMock.mockResolvedValue({
+        ok: true,
+        json: vi.fn().mockResolvedValue({ data: { results: [] }, metadata: {} }),
+      });
+
+      await searchMemory(mockContext, { query: 'anything' });
+
+      const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+      expect(body).not.toHaveProperty('memory_type');
+      expect(body).not.toHaveProperty('category');
+      expect(body).not.toHaveProperty('score_threshold');
+      expect(body.query).toBe('anything');
+    });
+
+    it('still sends explicit values, including a zero threshold and empty category', async () => {
+      fetchMock.mockResolvedValue({
+        ok: true,
+        json: vi.fn().mockResolvedValue({ data: { results: [] }, metadata: {} }),
+      });
+
+      await searchMemory(mockContext, {
+        query: 'q',
+        memory_type: MemoryType.EPISODIC,
+        category: '',
+        score_threshold: 0,
+      });
+
+      const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+      expect(body.memory_type).toBe('episodic');
+      expect(body.category).toBe('');
+      expect(body.score_threshold).toBe(0);
     });
   });
 });

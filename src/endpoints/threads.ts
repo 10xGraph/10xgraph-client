@@ -21,6 +21,12 @@ export interface ThreadItem {
 
 export interface ThreadsData {
   threads: ThreadItem[];
+  /** True when more threads exist after this page. Absent on servers older than 1.0.0. */
+  has_more?: boolean;
+  /** Offset the server applied. */
+  offset?: number;
+  /** Limit the server applied (after its default and maximum clamp). */
+  limit?: number;
 }
 
 export interface ThreadsResponse {

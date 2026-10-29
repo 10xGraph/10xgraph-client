@@ -2,10 +2,17 @@ import { Message } from '../message.js';
 import { AgentState } from '../agent.js';
 import { ToolExecutor } from '../tools.js';
 import { createErrorFromResponse } from '../errors.js';
-import { buildHeaders, getRequestCredentials, RequestContext } from '../request.js';
+import {
+  buildHeaders,
+  getRequestCredentials,
+  linkAbortSignal,
+  RequestContext,
+} from '../request.js';
 
 export interface StreamContext extends RequestContext {
   toolExecutor?: ToolExecutor;
+  /** Caller-supplied signal; aborting it cancels the request, including the open stream. */
+  signal?: AbortSignal;
 }
 
 // Stream Request payload (same as Invoke)
@@ -271,6 +278,7 @@ export async function* streamInvoke(
 
   // Main recursion loop (same as invoke, but using streaming)
   while (iterations < recursion_limit) {
+    context.signal?.throwIfAborted();
     iterations++;
 
     if (context.debug) {
@@ -299,6 +307,7 @@ export async function* streamInvoke(
     // Open the stream and yield all chunks
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), context.timeout);
+    const unlink = linkAbortSignal(controller, context.signal);
 
     try {
       const response = await fetch(`${context.baseUrl}/v1/graph/stream`, {
@@ -350,6 +359,8 @@ export async function* streamInvoke(
         }
       }
 
+      unlink();
+
       if (context.debug) {
         console.info('TenxGraphClient: Stream iteration completed');
         console.debug('TenxGraphClient: Received', responseMessages.length, 'messages');
@@ -384,8 +395,13 @@ export async function* streamInvoke(
       }
     } catch (error) {
       clearTimeout(timeoutId);
+      unlink();
 
       if ((error as Error).name === 'AbortError') {
+        if (context.signal?.aborted) {
+          // Cancelled by the caller, not a timeout: surface the abort as is.
+          throw error;
+        }
         console.warn(`TenxGraphClient: Stream timeout after ${context.timeout}ms`);
         throw new Error(`Request timeout after ${context.timeout}ms`);
       }

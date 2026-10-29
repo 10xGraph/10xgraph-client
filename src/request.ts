@@ -20,6 +20,24 @@ export interface TenxGraphHeaderAuth {
 
 export type TenxGraphAuth = TenxGraphBearerAuth | TenxGraphBasicAuth | TenxGraphHeaderAuth;
 
+/**
+ * Abort `controller` when the caller's `signal` aborts. Returns a cleanup function.
+ * A signal that is already aborted aborts the controller immediately.
+ */
+export function linkAbortSignal(
+  controller: AbortController,
+  signal?: AbortSignal | null
+): () => void {
+  if (!signal) return () => {};
+  if (signal.aborted) {
+    controller.abort();
+    return () => {};
+  }
+  const onAbort = (): void => controller.abort();
+  signal.addEventListener('abort', onAbort, { once: true });
+  return () => signal.removeEventListener('abort', onAbort);
+}
+
 export interface RequestContext {
   baseUrl: string;
   authToken?: string | null;

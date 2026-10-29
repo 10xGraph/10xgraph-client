@@ -1,6 +1,6 @@
 {
   "name": "10xgraph-client",
-  "version": "1.0.0-rc.1",
+  "version": "1.0.0-rc.2",
   "description": "TypeScript client for the 10xGraph API server: invoke and stream agent graphs, manage threads, memory and files, run client-side tools, and realtime audio. Formerly @10xscale/agentflow-client.",
   "type": "module",
   "main": "./dist/index.cjs",
