@@ -26,17 +26,54 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
-## [Unreleased]
+## [1.0.0-rc.2] - 2026-10-30
 
----
+The second release candidate of `10xgraph-client` 1.0, aligned with `10xgraph` and `10xgraph-api`
+1.0.0rc2. It is `1.0.0-rc.1` below plus the changes here. Use it with `10xgraph-api` 1.0.0rc2. New
+response fields are typed optional, so the client still works against older servers. The client
+API is source compatible with 0.6.0; the one hard requirement change is Node.js 20.
 
-## [1.0.0-rc.2] - Unreleased
+### Breaking
 
-All changes are additive. Several new response fields need `10xgraph-api` 1.0.0rc1 or later and are
-typed optional, so the client still works against older servers.
+- **Node.js 18 is no longer supported.** `engines` is `node >= 20.0.0` and Node 18 is removed
+  from CI (CI runs Node 20 and 22). Node 18 is past end of life.
+
+### Upgrade notes
+
+- With `10xgraph-api` 1.0 a client that invents a thread id for a new conversation gets HTTP 403. Omit `thread_id` on the first request and reuse the id the server returns (see
+  `1.0.0-rc.1` below).
+- Behaviour you may notice, none of it a signature change:
+  - `stream()` and `wsStream()` now throw (`StreamError`, `WebSocketError`) when a stream is cut
+    or the server closes the socket mid-run. Before, they ended as if the run had succeeded.
+  - The `timeout` option is an idle timeout on `stream()` and `wsStream()`: it limits how long the
+    client waits on the network, not how long the whole run takes.
+  - A `baseUrl` with a trailing slash is accepted; the slashes are stripped.
+  - Errors from timeouts and network failures are `RequestTimeoutError` and `NetworkError`, not
+    plain `Error`. Code that matched on message text should check the class.
 
 ### Added
 
+- `Interrupt` type, `getInterrupt(chunk)`, `approveInterrupt(interrupt, value?)` and
+  `rejectInterrupt(interrupt)`. `getInterrupt` reads the pending interrupt from an `updates`
+  chunk; the helpers return `{ resume, interrupt_id }` to spread into the options of
+  `invoke()`, `stream()` or `wsStream()`.
+- `authToken` accepts a function `() => string | null | undefined`, called on every request and
+  on every realtime reconnect, so short-lived tokens refresh without rebuilding the client.
+  `setAuthToken(token)` replaces it, and `clearAuth()` drops the bearer token and `auth`
+  credentials.
+- Every method that makes a request takes a `signal` option (`RequestOptions`), not only
+  `invoke()`, `stream()` and `wsStream()`.
+- New error classes and fields: `RequestTimeoutError`, `NetworkError`, `WebSocketError`,
+  `StreamError` and `RateLimitError`. `RateLimitError` carries `retryAfterSeconds` from the
+  `Retry-After` header or the body. Errors carry `cause`, `endpoint` and `method`, and
+  `requestId` reads the `x-request-id` header.
+- Remote tool registrations take `validate(args)` (throw or return `false` to refuse the call)
+  and `maxArgsBytes` (default 1 MiB). The declared `parameters` are checked against the
+  server-sent arguments before the handler runs, and a repeated call id is rejected.
+- `listMemories` takes `offset`, and its response has `has_more` and `next_offset`, so a user with
+  many memories can page. Needs `10xgraph-api` 1.0.
+- CommonJS consumers get their own type declarations (`dist/cjs/index.d.ts`) through the
+  `exports` map, so `require` works with `nodenext` type checking.
 - `signal?: AbortSignal` option on `invoke()`, `stream()` and `wsStream()`. Aborting it cancels the
   in-flight request (and the open stream body or WebSocket). The call rejects with the abort error
   (`name === 'AbortError'`), not the "Request timeout" error. A signal that is already aborted
@@ -55,8 +92,57 @@ typed optional, so the client still works against older servers.
   `kind`, `passed`, `threshold`, `details`, `error`, case `expected_detail`, run `counts`, and
   `errors` on run summaries.
 
+### Changed
+
+- Live sessions without a `thread_id` now use the server-created id. The client no longer invents one: it sends none, reads the id from the new `session_started` event (`{ type: 'session_started', thread_id }`, the first server event) into `session.threadId` (`string | null`, set once the event arrives), and sends it back on reconnect so the same thread continues. A caller-supplied `thread_id` works as before. Needs `10xgraph-api` 1.0, where an invented id gets 403.
+- **Typed change:** `RealtimeSession.threadId` is `string | null`. It is `null` until the
+  `session_started` event arrives when you passed no `thread_id`, so code that read it as a
+  `string` right after `realtime()` must handle `null` (or wait for `session_started`).
+  `session.ready` still resolves when the socket opens, not on `session_started`, and the event is
+  part of the `RealtimeEvent` union.
+- The `timeout` is an idle timeout on `stream()` and `wsStream()`: it runs while the client waits
+  for headers or the next piece of data and is paused while your code handles a chunk.
+- `invoke()` and the other REST methods apply the timeout and your `signal` to the response body
+  as well, not only to the response headers.
+- Realtime reconnects use jittered backoff, restore the attempt budget only after a connection
+  stayed open for 10 s, go straight to the longest delay on close code 1013, and stop with a fatal
+  `policy_violation` error on close code 1008 (an expired or rejected token).
+- Path ids (thread, message, memory) are percent-encoded in every endpoint.
+- Header-type credentials other than `Authorization` (for example `X-API-Key`) are not forwarded
+  on a cross-origin redirect; the call fails instead.
+- The HTTP error mapping covers every JSON error body, including the real server's 409
+  `state_conflict` body, and maps the server's codes (`RECURSION_001`, `STORAGE_TRANSIENT_000`,
+  `STORAGE_SCHEMA_000`, `STORAGE_SERIALIZATION_000`) to `GraphRecursionError`,
+  `TransientStorageError`, `SchemaVersionError` and `SerializationError`.
+- Response and request types match what the server sends: fields the server never sends were
+  removed from `AgentState` and `StopGraphResponse`, nullable fields are typed nullable, and
+  `updateThreadState` no longer accepts keys the server rejects.
+- `stream()` and `wsStream()` stop a client-tool loop at `recursion_limit`; `recursion_limit: 0`
+  is honoured and not turned into 25.
+
 ### Fixed
 
+- Leaving a `for await` loop over `stream()` early (`break`, `return` or a throw) cancels the
+  request. Before, the connection and the server run stayed open and the thread answered 409.
+- `wsStream()` no longer hangs when the server answers a frame with an error chunk, and it
+  throws when the server closes the socket before the run finishes (1012, 1008, 1011).
+- A truncated or unparseable stream line throws `StreamError` and a reset connection throws a
+  `StreamError` with code `STREAM_INTERRUPTED`, not a raw `TypeError: terminated`.
+- A conflict (HTTP 409) throws `ConflictError` against the real server. It used to throw a
+  `TypeError`.
+- `client.realtime()` no longer crashes the Node process with an unhandled rejection when the
+  connection fails and `session.ready` was not awaited.
+- Realtime: `close()` during a pending reconnect no longer reopens the session, `send*` before
+  the socket is open is dropped and does not throw, and a failing reconnect does not end the
+  process.
+- Failed requests no longer leave the timeout timer running, so a script that catches a
+  `ping()` error exits at once instead of after the timeout.
+- Empty arrays are no longer stripped from messages and tool results, so a tool result with
+  `output: []` reaches the model as an empty list.
+- `recursion_limit_reached` is true only when the limit stopped the run, and a limit stop is
+  reported to the caller instead of ending silently.
+- Endpoint calls that time out throw `RequestTimeoutError`, not a raw `AbortError`, and
+  `forgetMemories()` throws a typed error, not a plain `Error`.
 - `searchMemory()` no longer sends `memory_type: 'episodic'`, `category: ''` and
   `score_threshold: 0` when you leave them unset. They are omitted so the server applies no filter,
   and a search without a type now covers all memory types. Pass `memory_type` explicitly to keep

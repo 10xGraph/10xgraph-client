@@ -1,6 +1,11 @@
 import { ResponseMetadata } from './metadata.js';
 import { createErrorFromResponse } from '../errors.js';
-import { buildHeaders, getRequestCredentials, RequestContext } from '../request.js';
+import {
+  buildHeaders,
+  getRequestCredentials,
+  RequestContext,
+  fetchWithTimeout,
+} from '../request.js';
 
 export interface ThreadsContext extends RequestContext {}
 
@@ -56,9 +61,6 @@ export async function threads(
       }
     }
 
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), context.timeout);
-
     // Build query parameters
     const params = new URLSearchParams();
     if (request?.search) {
@@ -74,17 +76,14 @@ export async function threads(
     const queryString = params.toString();
     const url = `${context.baseUrl}/v1/threads${queryString ? `?${queryString}` : ''}`;
 
-    const response = await fetch(url, {
+    const response = await fetchWithTimeout(context, url, {
       method: 'GET',
       headers: buildHeaders(context as RequestContext, {
         'Content-Type': 'application/json',
         accept: 'application/json',
       }),
       ...getRequestCredentials(context as RequestContext),
-      signal: controller.signal,
     });
-
-    clearTimeout(timeoutId);
 
     if (!response.ok) {
       console.warn(`TenxGraphClient: Threads list fetch failed with HTTP ${response.status}`);
@@ -106,10 +105,6 @@ export async function threads(
 
     return data;
   } catch (error) {
-    if ((error as Error).name === 'AbortError') {
-      console.warn(`TenxGraphClient: Threads list fetch timeout after ${context.timeout}ms`);
-      throw new Error(`Request timeout after ${context.timeout}ms`);
-    }
     if (context.debug) {
       console.debug('TenxGraphClient: Threads list fetch failed:', error);
     }

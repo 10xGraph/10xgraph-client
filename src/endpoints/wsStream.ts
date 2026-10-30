@@ -2,6 +2,7 @@ import { Message } from '../message.js';
 import { ToolExecutor } from '../tools.js';
 import { RequestContext } from '../request.js';
 import { buildWsUrl, openWebSocket } from '../ws.js';
+import { RequestTimeoutError, StreamError, WebSocketError } from '../errors.js';
 import { StreamChunk, StreamEventType, StreamRequest, serializeMessage } from './stream.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -30,6 +31,11 @@ interface WsGraphInput {
   interrupt_id?: string;
   response_granularity?: string;
 }
+
+const WS_ENDPOINT = '/v1/graph/ws';
+
+/** What the socket listeners hand to the generator. */
+type QueueItem = StreamChunk | Error | { closed: true; code: number };
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Helpers
@@ -76,21 +82,27 @@ export async function* wsStreamInvoke(
   request: StreamRequest
 ): AsyncGenerator<StreamChunk, void, unknown> {
   context.signal?.throwIfAborted();
-  const url = buildWsUrl(context, '/v1/graph/ws');
+  const url = buildWsUrl(context, WS_ENDPOINT);
 
   if (context.debug) {
     console.debug('TenxGraphClient [WS]: connecting to', url);
   }
 
   const ws = openWebSocket(url, context);
+  const recursion_limit = request.recursion_limit ?? 25;
+  // At least one run is always sent; the limit caps tool resumes after that.
+  const maxRuns = Math.max(1, recursion_limit);
+  // The timeout is an idle timeout: it applies while waiting for the socket to open and
+  // while waiting for the next frame, never while the caller processes a chunk.
+  const idleMs = context.timeout > 0 ? context.timeout : 0;
 
   // ── Queue bridge ──────────────────────────────────────────────────────────
   // WebSocket is event-based; async generators are pull-based.
   // We buffer incoming items in a queue and wake up the generator each time.
-  const queue: Array<StreamChunk | Error | 'close'> = [];
+  const queue: QueueItem[] = [];
   let wakeUp: (() => void) | null = null;
 
-  const enqueue = (item: StreamChunk | Error | 'close'): void => {
+  const enqueue = (item: QueueItem): void => {
     queue.push(item);
     if (wakeUp) {
       const fn = wakeUp;
@@ -108,26 +120,48 @@ export async function* wsStreamInvoke(
       }
     });
 
+  /** Next queued item, or a timeout error item when nothing arrives within the idle window. */
+  const nextItem = async (): Promise<QueueItem> => {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    if (idleMs > 0) {
+      timer = setTimeout(() => enqueue(new RequestTimeoutError(idleMs, WS_ENDPOINT, 'WS')), idleMs);
+    }
+    try {
+      await waitForItem();
+    } finally {
+      if (timer !== undefined) clearTimeout(timer);
+    }
+    return queue.shift()!;
+  };
+
   ws.addEventListener('message', (event: MessageEvent) => {
     try {
       const chunk = JSON.parse(event.data as string) as StreamChunk;
       enqueue(chunk);
     } catch (e) {
-      if (context.debug) {
-        console.warn('TenxGraphClient [WS]: failed to parse chunk:', e);
-      }
+      // A frame that is not JSON means the stream is corrupt; do not skip it silently.
+      enqueue(
+        new StreamError(
+          'WebSocket frame could not be parsed as JSON',
+          'STREAM_TRUNCATED',
+          'unknown',
+          WS_ENDPOINT,
+          'WS',
+          e
+        )
+      );
     }
   });
 
   ws.addEventListener('error', () => {
-    enqueue(new Error('WebSocket error'));
+    enqueue(new WebSocketError('WebSocket error', undefined, WS_ENDPOINT));
   });
 
   ws.addEventListener('close', (event: CloseEvent) => {
     if (context.debug) {
       console.debug('TenxGraphClient [WS]: connection closed, code=', event.code);
     }
-    enqueue('close');
+    enqueue({ closed: true, code: event.code });
   });
 
   const makeAbortError = (): Error => {
@@ -143,46 +177,83 @@ export async function* wsStreamInvoke(
   };
   context.signal?.addEventListener('abort', onAbort, { once: true });
 
-  // Wait for the connection to open (or fail)
-  await new Promise<void>((resolve, reject) => {
-    if (context.signal?.aborted) {
-      reject(makeAbortError());
-      return;
-    }
-    context.signal?.addEventListener('abort', () => reject(makeAbortError()), { once: true });
-    // Numeric readyState literals (OPEN===1) instead of WebSocket.OPEN: the
-    // global WebSocket may be absent on Node < 21 when a custom impl is injected.
-    if (ws.readyState === 1) {
-      resolve();
-      return;
-    }
-    ws.addEventListener('open', () => resolve(), { once: true });
-    ws.addEventListener('error', () => reject(new Error('WebSocket connection failed')), {
-      once: true,
-    });
-  });
-
-  if (context.debug) {
-    console.debug('TenxGraphClient [WS]: connected');
-  }
-
-  // ── Main loop ─────────────────────────────────────────────────────────────
-  let threadId: string | undefined = (request.config as Record<string, any>)?.thread_id;
-
-  let nextPayload: WsGraphInput = {
-    invoke_type: 'fresh',
-    messages: request.messages,
-    initial_state: request.initial_state,
-    config: request.config,
-    recursion_limit: request.recursion_limit ?? 25,
-    on_busy: request.on_busy,
-    resume: request.resume,
-    interrupt_id: request.interrupt_id,
-    response_granularity: request.response_granularity,
-  };
-
   try {
+    // Wait for the connection to open (or fail). Every listener added here is removed again,
+    // whichever way the wait ends.
+    await new Promise<void>((resolve, reject) => {
+      if (context.signal?.aborted) {
+        reject(makeAbortError());
+        return;
+      }
+      // Numeric readyState literals (OPEN===1) instead of WebSocket.OPEN: the
+      // global WebSocket may be absent on Node < 22 when a custom impl is injected.
+      if (ws.readyState === 1) {
+        resolve();
+        return;
+      }
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const cleanup = (): void => {
+        if (timer !== undefined) clearTimeout(timer);
+        ws.removeEventListener('open', onOpen);
+        ws.removeEventListener('error', onError);
+        ws.removeEventListener('close', onClose);
+        context.signal?.removeEventListener('abort', onConnectAbort);
+      };
+      const onOpen = (): void => {
+        cleanup();
+        resolve();
+      };
+      const onError = (): void => {
+        cleanup();
+        reject(new WebSocketError('WebSocket connection failed', undefined, WS_ENDPOINT));
+      };
+      const onClose = (e: Event): void => {
+        cleanup();
+        const code = (e as CloseEvent)?.code;
+        reject(
+          new WebSocketError(`WebSocket closed before it opened (code ${code})`, code, WS_ENDPOINT)
+        );
+      };
+      const onConnectAbort = (): void => {
+        cleanup();
+        reject(makeAbortError());
+      };
+      ws.addEventListener('open', onOpen);
+      ws.addEventListener('error', onError);
+      ws.addEventListener('close', onClose);
+      context.signal?.addEventListener('abort', onConnectAbort, { once: true });
+      if (idleMs > 0) {
+        timer = setTimeout(() => {
+          cleanup();
+          reject(new RequestTimeoutError(idleMs, WS_ENDPOINT, 'WS'));
+        }, idleMs);
+      }
+    });
+    // Anything queued while connecting (an error event that raced the open) is stale.
+    queue.length = 0;
+
+    if (context.debug) {
+      console.debug('TenxGraphClient [WS]: connected');
+    }
+
+    // ── Main loop ───────────────────────────────────────────────────────────
+    let threadId: string | undefined = (request.config as Record<string, any>)?.thread_id;
+    let runs = 0;
+
+    let nextPayload: WsGraphInput = {
+      invoke_type: 'fresh',
+      messages: request.messages,
+      initial_state: request.initial_state,
+      config: request.config,
+      recursion_limit,
+      on_busy: request.on_busy,
+      resume: request.resume,
+      interrupt_id: request.interrupt_id,
+      response_granularity: request.response_granularity,
+    };
+
     outerLoop: while (true) {
+      runs++;
       if (context.debug) {
         console.debug(
           `TenxGraphClient [WS]: sending ${nextPayload.invoke_type} request, thread_id=${threadId ?? 'new'}`
@@ -195,12 +266,16 @@ export async function* wsStreamInvoke(
       const runMessages: Message[] = [];
 
       innerLoop: while (true) {
-        await waitForItem();
-        const item = queue.shift()!;
+        const item = await nextItem();
 
-        if (item === 'close') {
-          // Server closed the connection unexpectedly
-          break outerLoop;
+        if ('closed' in item) {
+          // The server closed the socket before it finished the run (1012 restart,
+          // 1013 busy, 1008 policy, 1011 error ...). Never report that as success.
+          throw new WebSocketError(
+            `WebSocket closed before the run finished (code ${item.code})`,
+            item.code,
+            WS_ENDPOINT
+          );
         }
 
         if (item instanceof Error) {
@@ -229,6 +304,12 @@ export async function* wsStreamInvoke(
 
         // Yield every chunk to the caller (same as HTTP stream)
         yield chunk;
+
+        // The server sends no "done" after an error chunk (busy thread, rate limit, not
+        // authorized, shutdown cut with data.interrupted). The error ends the run.
+        if (chunk.event === StreamEventType.ERROR) {
+          break outerLoop;
+        }
       }
 
       if (context.debug) {
@@ -239,6 +320,21 @@ export async function* wsStreamInvoke(
 
       // ── Tool-call detection & resume ──────────────────────────────────
       if (hasRemoteToolCalls(runMessages) && context.toolExecutor) {
+        if (runs >= maxRuns) {
+          if (context.debug) {
+            console.warn(`TenxGraphClient [WS]: recursion limit of ${recursion_limit} reached`);
+          }
+          yield {
+            event: StreamEventType.ERROR,
+            data: {
+              recursion_limit_reached: true,
+              message: `Recursion limit of ${recursion_limit} reached with tool calls still pending`,
+            },
+            thread_id: threadId,
+          };
+          break outerLoop;
+        }
+
         if (context.debug) {
           console.debug('TenxGraphClient [WS]: remote tool calls detected, executing…');
         }
@@ -255,7 +351,7 @@ export async function* wsStreamInvoke(
           invoke_type: 'resume',
           tool_result: toolResults.map(serializeMessage),
           config: { ...(request.config ?? {}), thread_id: threadId },
-          recursion_limit: request.recursion_limit ?? 25,
+          recursion_limit,
           on_busy: request.on_busy,
           response_granularity: request.response_granularity,
         };
@@ -268,7 +364,7 @@ export async function* wsStreamInvoke(
   } finally {
     context.signal?.removeEventListener('abort', onAbort);
     // CONNECTING===0, OPEN===1 (numeric literals; the global WebSocket may be
-    // absent on Node < 21 when a custom impl is injected).
+    // absent on Node < 22 when a custom impl is injected).
     if (ws.readyState === 1 || ws.readyState === 0) {
       ws.close(1000);
     }

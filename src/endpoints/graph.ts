@@ -1,6 +1,11 @@
 import { ResponseMetadata } from './metadata.js';
 import { createErrorFromResponse } from '../errors.js';
-import { buildHeaders, getRequestCredentials, RequestContext } from '../request.js';
+import {
+  buildHeaders,
+  getRequestCredentials,
+  RequestContext,
+  fetchWithTimeout,
+} from '../request.js';
 
 export interface GraphContext extends RequestContext {}
 
@@ -30,16 +35,16 @@ export interface GraphInfo {
   node_count: number;
   edge_count: number;
   checkpointer: boolean;
-  checkpointer_type: string;
+  checkpointer_type: string | null;
   publisher: boolean;
   store: boolean;
-  interrupt_before: string[];
-  interrupt_after: string[];
-  context_type: string;
-  id_generator: string;
-  id_type: string;
-  state_type: string;
-  state_fields: string[];
+  interrupt_before: string[] | null;
+  interrupt_after: string[] | null;
+  context_type: string | null;
+  id_generator: string | null;
+  id_type: string | null;
+  state_type: string | null;
+  state_fields: string[] | null;
   /** Live options the server honors; null when the graph is not a realtime agent. */
   realtime_options?: GraphRealtimeOptions | null;
 }
@@ -61,20 +66,14 @@ export async function graph(context: GraphContext): Promise<GraphResponse> {
       console.debug('TenxGraphClient: Fetching graph from', context.baseUrl);
     }
 
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), context.timeout);
-
-    const response = await fetch(`${context.baseUrl}/v1/graph`, {
+    const response = await fetchWithTimeout(context, `${context.baseUrl}/v1/graph`, {
       method: 'GET',
       headers: buildHeaders(context as RequestContext, {
         'Content-Type': 'application/json',
         accept: 'application/json',
       }),
       ...getRequestCredentials(context as RequestContext),
-      signal: controller.signal,
     });
-
-    clearTimeout(timeoutId);
 
     if (!response.ok) {
       console.warn(`TenxGraphClient: Graph fetch failed with HTTP ${response.status}`);
@@ -97,11 +96,6 @@ export async function graph(context: GraphContext): Promise<GraphResponse> {
   } catch (error) {
     if (context.debug) {
       console.debug('TenxGraphClient: Graph fetch failed:', error);
-    }
-
-    if ((error as Error).name === 'AbortError') {
-      console.warn(`TenxGraphClient: Graph fetch timeout after ${context.timeout}ms`);
-      throw new Error(`Request timeout after ${context.timeout}ms`);
     }
 
     console.error('TenxGraphClient: Graph fetch failed:', error);

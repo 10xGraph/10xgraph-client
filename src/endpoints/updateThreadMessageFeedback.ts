@@ -1,7 +1,13 @@
 import { ResponseMetadata } from './metadata.js';
 import { ThreadMessageData } from './threadMessage.js';
 import { createErrorFromResponse } from '../errors.js';
-import { buildHeaders, getRequestCredentials, RequestContext } from '../request.js';
+import {
+  buildHeaders,
+  getRequestCredentials,
+  RequestContext,
+  fetchWithTimeout,
+  encodePathSegment,
+} from '../request.js';
 
 export interface UpdateThreadMessageFeedbackContext extends RequestContext {}
 
@@ -33,12 +39,9 @@ export async function updateThreadMessageFeedback(
       );
     }
 
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), context.timeout);
+    const url = `${context.baseUrl}/v1/threads/${encodePathSegment(request.threadId)}/messages/${encodePathSegment(request.messageId)}`;
 
-    const url = `${context.baseUrl}/v1/threads/${request.threadId}/messages/${request.messageId}`;
-
-    const response = await fetch(url, {
+    const response = await fetchWithTimeout(context, url, {
       method: 'PUT',
       headers: buildHeaders(context as RequestContext, {
         'Content-Type': 'application/json',
@@ -46,10 +49,7 @@ export async function updateThreadMessageFeedback(
       }),
       ...getRequestCredentials(context as RequestContext),
       body: JSON.stringify({ feedback: request.feedback }),
-      signal: controller.signal,
     });
-
-    clearTimeout(timeoutId);
 
     if (!response.ok) {
       console.warn(
@@ -72,12 +72,6 @@ export async function updateThreadMessageFeedback(
 
     return data;
   } catch (error) {
-    if ((error as Error).name === 'AbortError') {
-      console.warn(
-        `TenxGraphClient: Update thread message feedback timeout after ${context.timeout}ms`
-      );
-      throw new Error(`Request timeout after ${context.timeout}ms`);
-    }
     if (context.debug) {
       console.debug('TenxGraphClient: Update thread message feedback failed:', error);
     }

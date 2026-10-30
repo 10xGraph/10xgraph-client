@@ -431,7 +431,7 @@ describe('forgetMemories', () => {
     it('should handle timeout errors', async () => {
       mockFetch.mockRejectedValueOnce(new DOMException('The operation was aborted.', 'AbortError'));
 
-      await expect(forgetMemories(context, {})).rejects.toThrow('The operation was aborted.');
+      await expect(forgetMemories(context, {})).rejects.toThrow('Request timeout after');
     });
   });
 
@@ -485,7 +485,7 @@ describe('forgetMemories', () => {
       await forgetMemories(contextNoTimeout, {});
 
       const callArgs = mockFetch.mock.calls[0][1];
-      expect(callArgs.signal).toBeUndefined();
+      expect(callArgs.signal.aborted).toBe(false);
     });
   });
 

@@ -1,6 +1,11 @@
 import { ResponseMetadata } from './metadata.js';
 import { createErrorFromResponse } from '../errors.js';
-import { buildHeaders, getRequestCredentials, RequestContext } from '../request.js';
+import {
+  buildHeaders,
+  getRequestCredentials,
+  RequestContext,
+  fetchWithTimeout,
+} from '../request.js';
 
 export interface ObservabilityContext extends RequestContext {}
 
@@ -117,41 +122,29 @@ export async function observability(
   threadId: string,
   runId?: string
 ): Promise<ObservabilityResponse> {
-  try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), context.timeout);
+  const query = runId ? `?run_id=${encodeURIComponent(runId)}` : '';
+  const response = await fetchWithTimeout(
+    context,
+    `${context.baseUrl}/v1/observability/${encodeURIComponent(threadId)}${query}`,
+    {
+      method: 'GET',
+      headers: buildHeaders(context as RequestContext, {
+        'Content-Type': 'application/json',
+        accept: 'application/json',
+      }),
+      ...getRequestCredentials(context as RequestContext),
+    }
+  );
 
-    const query = runId ? `?run_id=${encodeURIComponent(runId)}` : '';
-    const response = await fetch(
-      `${context.baseUrl}/v1/observability/${encodeURIComponent(threadId)}${query}`,
-      {
-        method: 'GET',
-        headers: buildHeaders(context as RequestContext, {
-          'Content-Type': 'application/json',
-          accept: 'application/json',
-        }),
-        ...getRequestCredentials(context as RequestContext),
-        signal: controller.signal,
-      }
+  if (!response.ok) {
+    const error = await createErrorFromResponse(
+      response,
+      'Observability fetch failed',
+      `/v1/observability/${threadId}`,
+      'GET'
     );
-
-    clearTimeout(timeoutId);
-
-    if (!response.ok) {
-      const error = await createErrorFromResponse(
-        response,
-        'Observability fetch failed',
-        `/v1/observability/${threadId}`,
-        'GET'
-      );
-      throw error;
-    }
-
-    return (await response.json()) as ObservabilityResponse;
-  } catch (error) {
-    if ((error as Error).name === 'AbortError') {
-      throw new Error(`Request timeout after ${context.timeout}ms`);
-    }
     throw error;
   }
+
+  return (await response.json()) as ObservabilityResponse;
 }

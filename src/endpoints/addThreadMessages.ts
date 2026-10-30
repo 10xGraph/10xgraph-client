@@ -1,7 +1,14 @@
 import { ResponseMetadata } from './metadata.js';
 import { Message } from '../message.js';
+import { serializeMessage } from './stream.js';
 import { createErrorFromResponse } from '../errors.js';
-import { buildHeaders, getRequestCredentials, RequestContext } from '../request.js';
+import {
+  buildHeaders,
+  getRequestCredentials,
+  RequestContext,
+  fetchWithTimeout,
+  encodePathSegment,
+} from '../request.js';
 
 export interface AddThreadMessagesContext extends RequestContext {}
 
@@ -36,29 +43,23 @@ export async function addThreadMessages(
       console.debug('TenxGraphClient: Adding thread messages to thread', request.threadId);
     }
 
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), context.timeout);
-
-    const url = `${context.baseUrl}/v1/threads/${request.threadId}/messages`;
+    const url = `${context.baseUrl}/v1/threads/${encodePathSegment(request.threadId)}/messages`;
 
     // Prepare request body
     const body = {
       config: request.config,
-      messages: request.messages,
+      messages: request.messages.map((message) => serializeMessage(message)),
       metadata: request.metadata || {},
     };
 
-    const response = await fetch(url, {
+    const response = await fetchWithTimeout(context, url, {
       method: 'POST',
       headers: buildHeaders(context as RequestContext, {
         'Content-Type': 'application/json',
       }),
       ...getRequestCredentials(context as RequestContext),
       body: JSON.stringify(body),
-      signal: controller.signal,
     });
-
-    clearTimeout(timeoutId);
 
     if (!response.ok) {
       console.warn(`TenxGraphClient: Add checkpoint messages failed with HTTP ${response.status}`);

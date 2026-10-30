@@ -22,11 +22,15 @@ export interface RealtimeVADConfig {
 
 export interface RealtimeInit {
   /**
-   * e.g. "gemini-2.5-flash-live". Honoured only when the server lists it in
+   * e.g. "gemini-3.8-live". Honoured only when the server lists it in
    * `websocket.realtime_models`; otherwise the agent's own model is used.
    */
   model?: string;
-  /** Omit to let the session generate one (used for resume). */
+  /**
+   * Omit to let the server create the thread; the id arrives in the `session_started` event and
+   * is read from `session.threadId`. Pass an id to continue a thread (the server must allow it:
+   * under the default `runs.thread_ids: "server"` it must be one the server already knows).
+   */
   thread_id?: string;
   voice?: string;
   modalities?: ResponseModality | ResponseModality[];
@@ -40,6 +44,7 @@ export interface RealtimeInit {
 
 /** Downstream JSON events. Audio arrives separately as binary via the `audio` channel. */
 export type RealtimeEvent =
+  | { type: 'session_started'; thread_id: string }
   | { type: 'input_transcript'; text: string; finished: boolean }
   | { type: 'output_transcript'; text: string; finished: boolean }
   | { type: 'tool_call'; id: string; name: string; args: Record<string, unknown> }
@@ -68,7 +73,11 @@ export interface RealtimeOptions {
   onError?: (e: Extract<RealtimeEvent, { type: 'error' }>) => void;
 }
 
-export type RealtimeContext = RequestContext & WsAuthContext;
+export type RealtimeContext = RequestContext &
+  WsAuthContext & {
+    /** Resolves the current bearer token; called on every (re)connect so a refreshed token is used. */
+    getAuthToken?: () => string | null | undefined;
+  };
 
 // ── Lifecycle/event channels the emitter understands ─────────────────────────
 type ChannelMap = {
@@ -88,24 +97,8 @@ type ChannelName = keyof ChannelMap;
 // fully typed via ChannelMap[K]; this only avoids the unsafe `Function` type.
 type ChannelListener = (...args: never[]) => void;
 
-function genThreadId(): string {
-  const c = (globalThis as { crypto?: { randomUUID?: () => string } }).crypto;
-  if (c?.randomUUID) {
-    return c.randomUUID();
-  }
-  // Fallback: timestamp-free, index-free pseudo-id is not required here because a
-  // dropped session reuses this same id; uniqueness across sessions is enough.
-  return 'rt-' + Math.abs(hashString(String(Date.now()))).toString(36);
-}
-
-function hashString(s: string): number {
-  let h = 0;
-  for (let i = 0; i < s.length; i++) {
-    h = (h << 5) - h + s.charCodeAt(i);
-    h |= 0;
-  }
-  return h;
-}
+/** How long a connection must stay open before the reconnect budget is restored. */
+const STABLE_CONNECTION_MS = 10_000;
 
 /** Normalize an incoming binary frame (ArrayBuffer / typed array / Buffer) to Uint8Array. */
 function toUint8(data: unknown): Uint8Array | null {
@@ -127,7 +120,11 @@ function toUint8(data: unknown): Uint8Array | null {
  * Mic capture and audio playback are the caller's responsibility.
  */
 export class RealtimeSession {
-  readonly threadId: string;
+  /**
+   * The thread this session runs on: the caller's `thread_id`, or the id the server created.
+   * `null` until the `session_started` event arrives, when the caller gave none.
+   */
+  threadId: string | null;
   resumptionHandle: string | null = null;
   ready: Promise<void>;
 
@@ -141,12 +138,15 @@ export class RealtimeSession {
   private closedByUser = false;
   private fatal = false;
   private reconnectAttempts = 0;
+  private reconnectTimer: ReturnType<typeof setTimeout> | undefined;
+  private stableTimer: ReturnType<typeof setTimeout> | undefined;
   private readonly reconnectCfg: Required<RealtimeReconnectOptions>;
 
   constructor(ctx: RealtimeContext, init: RealtimeInit, options?: RealtimeOptions) {
     this.ctx = ctx;
-    this.threadId = init.thread_id ?? genThreadId();
-    this.init = { ...init, thread_id: this.threadId };
+    this.threadId = init.thread_id ?? null;
+    this.init = { ...init };
+    if (this.threadId === null) delete this.init.thread_id;
 
     this.reconnectCfg = {
       enabled: options?.reconnect?.enabled ?? true,
@@ -164,12 +164,21 @@ export class RealtimeSession {
       this.rejectReady = reject;
     });
 
+    // The events API invites callers not to await `ready`; a failed connection must not
+    // become an unhandled rejection that ends the process. Awaiting it still rejects.
+    this.ready.catch(() => {});
+
     this.connect();
   }
 
   // ── Public send API ─────────────────────────────────────────────────────────
+  /**
+   * Frames are dropped unless the socket is open; await `session.ready` (or the `open`
+   * event) before sending, so mic callbacks that fire early do not throw.
+   */
   sendAudio(pcm16: Uint8Array | ArrayBuffer): void {
-    this.ws?.send(pcm16 as ArrayBuffer);
+    const ws = this.ws;
+    if (ws && ws.readyState === 1) ws.send(pcm16 as ArrayBuffer);
   }
   sendText(text: string): void {
     this.sendControl({ type: 'text', text });
@@ -182,6 +191,8 @@ export class RealtimeSession {
   }
   close(): void {
     this.closedByUser = true;
+    this.clearTimers();
+    // A close frame only goes out on an open socket; a connecting one is just closed.
     this.sendControl({ type: 'close' });
     const ws = this.ws;
     if (ws && (ws.readyState === 0 || ws.readyState === 1)) {
@@ -212,14 +223,23 @@ export class RealtimeSession {
   }
 
   private sendControl(frame: Record<string, unknown>): void {
-    this.ws?.send(JSON.stringify(frame));
+    const ws = this.ws;
+    if (ws && ws.readyState === 1) ws.send(JSON.stringify(frame));
+  }
+
+  private clearTimers(): void {
+    if (this.reconnectTimer !== undefined) clearTimeout(this.reconnectTimer);
+    if (this.stableTimer !== undefined) clearTimeout(this.stableTimer);
+    this.reconnectTimer = undefined;
+    this.stableTimer = undefined;
   }
 
   private connect(): void {
     const url = buildWsUrl(this.ctx, '/v1/graph/live');
     if (this.ctx.debug) console.debug('TenxGraphClient [realtime]: connecting to', url);
 
-    const ws = openWebSocket(url, this.ctx);
+    const getToken = this.ctx.getAuthToken;
+    const ws = openWebSocket(url, getToken ? { ...this.ctx, authToken: getToken() } : this.ctx);
     try {
       // Receive audio as ArrayBuffer rather than Blob (browser default is "blob").
       (ws as { binaryType?: string }).binaryType = 'arraybuffer';
@@ -236,6 +256,13 @@ export class RealtimeSession {
         this.resolveReady();
       }
       this.emit('open');
+      // The attempt budget is restored only after the link has stayed up for a while, so a
+      // server that accepts and drops at once cannot keep resetting it.
+      if (this.stableTimer !== undefined) clearTimeout(this.stableTimer);
+      this.stableTimer = setTimeout(() => {
+        this.stableTimer = undefined;
+        this.reconnectAttempts = 0;
+      }, STABLE_CONNECTION_MS);
     });
 
     ws.addEventListener('message', (event: MessageEvent) => {
@@ -246,8 +273,24 @@ export class RealtimeSession {
     ws.addEventListener('close', (event: CloseEvent) => {
       if (this.ws !== ws) return; // stale socket from a previous connection; ignore
       const code = event?.code ?? 1000;
+      if (this.stableTimer !== undefined) clearTimeout(this.stableTimer);
+      this.stableTimer = undefined;
       this.emit('close', code);
-      this.maybeReconnect();
+      // 1008 is a policy violation (for example an expired or rejected token): retrying
+      // with the same credentials cannot succeed.
+      if (code === 1008 && !this.closedByUser && !this.fatal) {
+        this.fatal = true;
+        const failure = {
+          type: 'error' as const,
+          code: 'policy_violation',
+          message: 'Realtime connection closed by the server (1008, policy violation)',
+          fatal: true,
+        };
+        this.emit('error', failure);
+        this.emit('event', failure);
+        return;
+      }
+      this.maybeReconnect(code);
     });
 
     ws.addEventListener('error', () => {
@@ -273,6 +316,9 @@ export class RealtimeSession {
       if (this.ctx.debug) console.warn('TenxGraphClient [realtime]: bad JSON frame', data);
       return;
     }
+    if (parsed.type === 'session_started' && parsed.thread_id) {
+      this.threadId = parsed.thread_id;
+    }
     if (parsed.type === 'session_update') {
       this.resumptionHandle = parsed.resumption_handle ?? this.resumptionHandle;
     }
@@ -284,7 +330,7 @@ export class RealtimeSession {
     this.emit(parsed.type as ChannelName, parsed as never);
   }
 
-  private maybeReconnect(): void {
+  private maybeReconnect(closeCode?: number): void {
     if (this.closedByUser || this.fatal || !this.reconnectCfg.enabled) {
       return;
     }
@@ -303,24 +349,40 @@ export class RealtimeSession {
     }
     this.reconnectAttempts += 1;
     const attempt = this.reconnectAttempts;
-    const delayMs =
-      Math.min(this.reconnectCfg.baseDelay * 2 ** (attempt - 1), this.reconnectCfg.maxDelay) * 1000;
+    // 1013 means the server is overloaded: go straight to the longest delay. Jitter keeps
+    // many clients from retrying in step.
+    const backoff =
+      closeCode === 1013
+        ? this.reconnectCfg.maxDelay
+        : Math.min(this.reconnectCfg.baseDelay * 2 ** (attempt - 1), this.reconnectCfg.maxDelay);
+    const delayMs = backoff * 1000 * (0.5 + Math.random() * 0.5);
     this.emit('reconnecting', attempt);
-    setTimeout(() => this.reconnect(), delayMs);
+    this.reconnectTimer = setTimeout(() => {
+      this.reconnectTimer = undefined;
+      this.reconnect();
+    }, delayMs);
   }
 
   private reconnect(): void {
+    if (this.closedByUser) return;
     // Forward the latest resumption handle so the provider can resume server-side.
     this.init = {
       ...this.init,
-      thread_id: this.threadId,
+      // The server-given id, so the same thread continues; none yet means the first connect
+      // never got `session_started`, and the server makes a new one.
+      ...(this.threadId ? { thread_id: this.threadId } : {}),
       ...(this.resumptionHandle ? { resumption_handle: this.resumptionHandle } : {}),
     };
-    const onceOpen = () => {
-      this.reconnectAttempts = 0;
-      this.emit('reconnected');
-    };
-    this.connect();
-    this.ws?.addEventListener('open', onceOpen, { once: true } as AddEventListenerOptions);
+    try {
+      this.connect();
+      this.ws?.addEventListener('open', () => this.emit('reconnected'), {
+        once: true,
+      } as AddEventListenerOptions);
+    } catch (err) {
+      // The socket constructor threw inside a timer; count it as a failed attempt instead
+      // of letting it escape as an uncaught exception.
+      if (this.ctx.debug) console.warn('TenxGraphClient [realtime]: reconnect failed', err);
+      this.maybeReconnect();
+    }
   }
 }

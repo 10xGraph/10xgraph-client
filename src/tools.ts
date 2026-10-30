@@ -52,6 +52,56 @@ export interface ToolRegistration {
   description?: string;
   parameters?: ToolParameter;
   handler: ToolHandler;
+  /**
+   * Runs on the server-sent arguments before the handler (after the declared `parameters`
+   * check). Throw, or return `false`, to reject the call: the model receives a failed tool
+   * result and the handler is not run.
+   */
+  validate?: (args: any) => boolean | void | Promise<boolean | void>;
+  /** Reject calls whose JSON-serialised arguments exceed this many bytes. Default 1 MiB. */
+  maxArgsBytes?: number;
+}
+
+/** Default cap on serialised tool-call arguments. */
+export const DEFAULT_MAX_TOOL_ARGS_BYTES = 1024 * 1024;
+
+/** Check `args` against the top level of a declared JSON Schema; returns an error message or null. */
+export function checkToolArguments(args: unknown, parameters?: ToolParameter): string | null {
+  if (!parameters) return null;
+  if (args === null || typeof args !== 'object' || Array.isArray(args)) {
+    return 'arguments must be an object';
+  }
+  const record = args as Record<string, unknown>;
+  for (const key of parameters.required ?? []) {
+    if (!(key in record)) return `missing required argument '${key}'`;
+  }
+  const properties = parameters.properties ?? {};
+  if (parameters.additionalProperties === false) {
+    for (const key of Object.keys(record)) {
+      if (!(key in properties)) return `unexpected argument '${key}'`;
+    }
+  }
+  for (const [key, schema] of Object.entries(properties)) {
+    const value = record[key];
+    const expected = (schema as { type?: unknown } | null)?.type;
+    if (value === undefined || typeof expected !== 'string') continue;
+    const ok =
+      expected === 'string'
+        ? typeof value === 'string'
+        : expected === 'number'
+          ? typeof value === 'number'
+          : expected === 'integer'
+            ? Number.isInteger(value)
+            : expected === 'boolean'
+              ? typeof value === 'boolean'
+              : expected === 'array'
+                ? Array.isArray(value)
+                : expected === 'object'
+                  ? value !== null && typeof value === 'object' && !Array.isArray(value)
+                  : true;
+    if (!ok) return `argument '${key}' must be of type ${expected}`;
+  }
+  return null;
 }
 
 // Internal tool definition (extends handler)
@@ -60,6 +110,8 @@ export interface ToolDefinition extends ToolHandler {
   description?: string;
   parameters?: ToolParameter;
   node?: string;
+  validate?: ToolRegistration['validate'];
+  maxArgsBytes?: number;
 }
 
 export class ToolExecutor {
@@ -105,6 +157,16 @@ export class ToolExecutor {
     });
     Object.defineProperty(toolDef, 'parameters', {
       value: registration.parameters,
+      writable: true,
+      configurable: true,
+    });
+    Object.defineProperty(toolDef, 'validate', {
+      value: registration.validate,
+      writable: true,
+      configurable: true,
+    });
+    Object.defineProperty(toolDef, 'maxArgsBytes', {
+      value: registration.maxArgsBytes,
       writable: true,
       configurable: true,
     });
@@ -174,14 +236,47 @@ export class ToolExecutor {
 
     const results: Message[] = [];
 
+    const seenCallIds = new Set<string>();
+    const failed = (callId: string, error: string): Message =>
+      Message.tool_message([
+        new ToolResultBlock({
+          call_id: callId,
+          output: { error },
+          status: 'failed',
+          is_error: true,
+        }),
+      ]);
+
     // Execute each tool call
     for (const call of toolCalls) {
       const toolName = call.name;
+
+      if (call.id && seenCallIds.has(call.id)) {
+        results.push(failed(call.id, `Duplicate tool call id '${call.id}' rejected`));
+        continue;
+      }
+      if (call.id) seenCallIds.add(call.id);
 
       if (this.tools.has(toolName)) {
         const tool = this.tools.get(toolName)!;
 
         try {
+          const maxBytes = tool.maxArgsBytes ?? DEFAULT_MAX_TOOL_ARGS_BYTES;
+          const size = JSON.stringify(call.args ?? null)?.length ?? 0;
+          if (size > maxBytes) {
+            results.push(failed(call.id, `Arguments for '${toolName}' exceed ${maxBytes} bytes`));
+            continue;
+          }
+          const invalid = checkToolArguments(call.args ?? {}, tool.parameters);
+          if (invalid) {
+            results.push(failed(call.id, `Invalid arguments for '${toolName}': ${invalid}`));
+            continue;
+          }
+          if (tool.validate && (await tool.validate(call.args)) === false) {
+            results.push(failed(call.id, `Arguments for '${toolName}' were rejected`));
+            continue;
+          }
+
           // Execute the tool
           const result = await tool(call.args);
 

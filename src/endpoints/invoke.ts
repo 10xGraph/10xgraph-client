@@ -1,7 +1,13 @@
 import { Message } from '../message.js';
 import { AgentState } from '../agent.js';
 import { ToolExecutor } from '../tools.js';
-import { createErrorFromResponse } from '../errors.js';
+import {
+  createErrorFromResponse,
+  NetworkError,
+  RequestTimeoutError,
+  StreamError,
+} from '../errors.js';
+import { serializeMessage } from './stream.js';
 import {
   buildHeaders,
   getRequestCredentials,
@@ -87,52 +93,78 @@ async function makeSingleInvokeCall(
   request: InvokeRequest
 ): Promise<InvokeResponse> {
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), context.timeout);
+  // The timeout and the caller's signal stay armed until the body is read, so a server that
+  // sends headers and then stalls is cut off too. A timeout of 0 means no timeout.
+  const timeoutId =
+    context.timeout > 0 ? setTimeout(() => controller.abort(), context.timeout) : undefined;
   const unlink = linkAbortSignal(controller, context.signal);
 
   try {
-    const response = await fetch(`${context.baseUrl}/v1/graph/invoke`, {
-      method: 'POST',
-      headers: buildHeaders(context as RequestContext, {
-        'Content-Type': 'application/json',
-        accept: 'application/json',
-      }),
-      ...getRequestCredentials(context as RequestContext),
-      body: JSON.stringify(request),
-      signal: controller.signal,
-    });
-
-    clearTimeout(timeoutId);
-    unlink();
+    let response: Response;
+    try {
+      response = await fetch(`${context.baseUrl}/v1/graph/invoke`, {
+        method: 'POST',
+        headers: buildHeaders(context as RequestContext, {
+          'Content-Type': 'application/json',
+          accept: 'application/json',
+        }),
+        ...getRequestCredentials(context as RequestContext),
+        body: JSON.stringify(request),
+        signal: controller.signal,
+      });
+    } catch (error) {
+      if (error instanceof TypeError) {
+        throw new NetworkError(
+          `Network error: ${error.message}`,
+          '/v1/graph/invoke',
+          'POST',
+          error
+        );
+      }
+      throw error;
+    }
 
     if (!response.ok) {
       console.warn(`TenxGraphClient: Invoke failed with HTTP ${response.status}`);
       const error = await createErrorFromResponse(
         response,
         'Invoke request failed',
-        '/v1/invoke',
+        '/v1/graph/invoke',
         'POST'
       );
       throw error;
     }
 
     const data: InvokeResponse = await response.json();
+    // A body without `data` (or without `messages`) must not crash the tool loop later.
+    if (!data || typeof data !== 'object' || !data.data || typeof data.data !== 'object') {
+      throw new StreamError(
+        'Invoke response had no data object',
+        'INVALID_RESPONSE',
+        'unknown',
+        '/v1/graph/invoke',
+        'POST'
+      );
+    }
+    if (!Array.isArray(data.data.messages)) {
+      data.data.messages = [];
+    }
     return data;
   } catch (error) {
-    clearTimeout(timeoutId);
-    unlink();
-
     if ((error as Error).name === 'AbortError') {
       if (context.signal?.aborted) {
         // Cancelled by the caller, not a timeout: surface the abort as is.
         throw error;
       }
       console.warn(`TenxGraphClient: Invoke timeout after ${context.timeout}ms`);
-      throw new Error(`Request timeout after ${context.timeout}ms`);
+      throw new RequestTimeoutError(context.timeout, '/v1/graph/invoke', 'POST', error);
     }
 
     console.error('TenxGraphClient: Invoke failed:', error);
     throw error;
+  } finally {
+    if (timeoutId !== undefined) clearTimeout(timeoutId);
+    unlink();
   }
 }
 
@@ -157,7 +189,9 @@ export async function invoke(
   request: InvokeRequest,
   onPartialResult?: InvokeCallback
 ): Promise<InvokeResult> {
-  const recursion_limit = request.recursion_limit || 25;
+  const recursion_limit = request.recursion_limit ?? 25;
+  // At least one request is always sent; the limit caps tool round trips after that.
+  const maxRuns = Math.max(1, recursion_limit);
 
   if (context.debug) {
     console.debug('TenxGraphClient: Starting invoke with recursion_limit:', recursion_limit);
@@ -179,12 +213,12 @@ export async function invoke(
   const interrupt_id = request.interrupt_id;
 
   // Main recursion loop
-  while (iterations < recursion_limit) {
+  while (true) {
     context.signal?.throwIfAborted();
     iterations++;
 
     if (context.debug) {
-      console.debug(`TenxGraphClient: Iteration ${iterations}/${recursion_limit}`);
+      console.debug(`TenxGraphClient: Iteration ${iterations}/${maxRuns}`);
     }
 
     // Prepare request for this iteration
@@ -227,6 +261,9 @@ export async function invoke(
     // Check if there are remote tool calls to execute
     const hasToolCalls = hasRemoteToolCalls(response);
 
+    // A tool round trip follows only while there is an executor and room under the limit
+    const willContinue = hasToolCalls && !!context.toolExecutor && iterations < maxRuns;
+
     // Send partial result immediately if callback provided
     if (onPartialResult) {
       const partialResult: InvokePartialResult = {
@@ -237,10 +274,19 @@ export async function invoke(
         summary: response.data.summary,
         meta: response.data.meta,
         has_tool_calls: hasToolCalls,
-        is_final: !hasToolCalls,
+        is_final: !willContinue,
       };
 
       await onPartialResult(partialResult);
+    }
+
+    if (hasToolCalls && context.toolExecutor && iterations >= maxRuns) {
+      // The limit stopped a loop that still wanted tools: the server thread is left waiting
+      recursionLimitReached = true;
+      if (context.debug) {
+        console.warn(`TenxGraphClient: Recursion limit of ${recursion_limit} reached`);
+      }
+      break;
     }
 
     if (hasToolCalls && context.toolExecutor) {
@@ -272,14 +318,6 @@ export async function invoke(
     }
   }
 
-  // Check if we hit the recursion limit
-  if (iterations >= recursion_limit) {
-    recursionLimitReached = true;
-    if (context.debug) {
-      console.warn(`TenxGraphClient: Recursion limit of ${recursion_limit} reached`);
-    }
-  }
-
   // Construct the result
   const result: InvokeResult = {
     messages: lastResponse?.data.messages || [],
@@ -298,56 +336,4 @@ export async function invoke(
   }
 
   return result;
-}
-
-/**
- * Clean content blocks by removing empty arrays and undefined values
- * Server requires array of content blocks
- */
-function cleanContent(content: any[]): any[] {
-  // Always return as array of blocks (server requires this format)
-  return content.map((block) => {
-    const cleaned: any = {};
-
-    for (const [key, value] of Object.entries(block)) {
-      // Skip empty arrays
-      if (Array.isArray(value) && value.length === 0) {
-        continue;
-      }
-      // Skip undefined values
-      if (value === undefined) {
-        continue;
-      }
-      cleaned[key] = value;
-    }
-
-    return cleaned;
-  });
-}
-
-/**
- * Serialize a Message object for API transmission
- */
-function serializeMessage(message: Message): any {
-  const serialized: any = {
-    role: message.role,
-    content: cleanContent(message.content),
-  };
-
-  // message_id: use "0" if not set (server will generate one)
-  if (message.message_id !== null && message.message_id !== undefined) {
-    serialized.message_id = String(message.message_id);
-  } else {
-    serialized.message_id = '0';
-  }
-
-  // Only include optional fields if they are explicitly set
-  if (message.tools_calls) {
-    serialized.tools_calls = message.tools_calls;
-  }
-  if (message.metadata && Object.keys(message.metadata).length > 0) {
-    serialized.metadata = message.metadata;
-  }
-
-  return serialized;
 }

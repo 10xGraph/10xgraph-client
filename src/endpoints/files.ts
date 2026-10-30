@@ -3,7 +3,12 @@
  */
 
 import { createErrorFromResponse } from '../errors.js';
-import { buildHeaders, getRequestCredentials, RequestContext } from '../request.js';
+import {
+  buildHeaders,
+  getRequestCredentials,
+  RequestContext,
+  fetchWithTimeout,
+} from '../request.js';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -86,46 +91,36 @@ export async function uploadFile(
   ctx: FileUploadContext,
   file: File | Blob | { data: Blob; filename: string }
 ): Promise<FileUploadResponse> {
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), ctx.timeout);
+  const formData = new FormData();
 
-  try {
-    const formData = new FormData();
-
-    // `File` only became a global in Node 20; this package supports Node 18, where a bare
-    // `instanceof File` throws ReferenceError. Guard before touching the global.
-    if (typeof File !== 'undefined' && file instanceof File) {
-      formData.append('file', file, file.name);
-    } else if ('data' in file && 'filename' in file) {
-      formData.append('file', file.data, file.filename);
-    } else {
-      formData.append('file', file, 'upload');
-    }
-
-    const response = await fetch(`${ctx.baseUrl}/v1/files/upload`, {
-      method: 'POST',
-      headers: buildHeaders(ctx as RequestContext),
-      body: formData,
-      ...getRequestCredentials(ctx as RequestContext),
-      signal: controller.signal,
-    });
-
-    clearTimeout(timeoutId);
-
-    if (!response.ok) {
-      const error = await createErrorFromResponse(
-        response,
-        'File upload failed',
-        '/v1/files/upload',
-        'POST'
-      );
-      throw error;
-    }
-
-    return (await response.json()) as FileUploadResponse;
-  } finally {
-    clearTimeout(timeoutId);
+  // `File` only became a global in Node 20; this package supports Node 18, where a bare
+  // `instanceof File` throws ReferenceError. Guard before touching the global.
+  if (typeof File !== 'undefined' && file instanceof File) {
+    formData.append('file', file, file.name);
+  } else if ('data' in file && 'filename' in file) {
+    formData.append('file', file.data, file.filename);
+  } else {
+    formData.append('file', file, 'upload');
   }
+
+  const response = await fetchWithTimeout(ctx, `${ctx.baseUrl}/v1/files/upload`, {
+    method: 'POST',
+    headers: buildHeaders(ctx as RequestContext),
+    body: formData,
+    ...getRequestCredentials(ctx as RequestContext),
+  });
+
+  if (!response.ok) {
+    const error = await createErrorFromResponse(
+      response,
+      'File upload failed',
+      '/v1/files/upload',
+      'POST'
+    );
+    throw error;
+  }
+
+  return (await response.json()) as FileUploadResponse;
 }
 
 // ---------------------------------------------------------------------------
@@ -135,33 +130,27 @@ export async function uploadFile(
  * Download a file by its file_id. Returns raw Blob.
  */
 export async function getFile(ctx: FileUploadContext, fileId: string): Promise<Blob> {
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), ctx.timeout);
-
-  try {
-    const response = await fetch(`${ctx.baseUrl}/v1/files/${encodeURIComponent(fileId)}`, {
+  const response = await fetchWithTimeout(
+    ctx,
+    `${ctx.baseUrl}/v1/files/${encodeURIComponent(fileId)}`,
+    {
       method: 'GET',
       headers: buildHeaders(ctx as RequestContext),
       ...getRequestCredentials(ctx as RequestContext),
-      signal: controller.signal,
-    });
-
-    clearTimeout(timeoutId);
-
-    if (!response.ok) {
-      const error = await createErrorFromResponse(
-        response,
-        'File download failed',
-        `/v1/files/${fileId}`,
-        'GET'
-      );
-      throw error;
     }
+  );
 
-    return await response.blob();
-  } finally {
-    clearTimeout(timeoutId);
+  if (!response.ok) {
+    const error = await createErrorFromResponse(
+      response,
+      'File download failed',
+      `/v1/files/${fileId}`,
+      'GET'
+    );
+    throw error;
   }
+
+  return await response.blob();
 }
 
 // ---------------------------------------------------------------------------
@@ -206,38 +195,28 @@ export async function listFiles(
   ctx: FileUploadContext,
   params?: ListFilesRequest
 ): Promise<ListFilesResponse> {
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), ctx.timeout);
+  const query = new URLSearchParams();
+  if (params?.limit !== undefined) query.append('limit', String(params.limit));
+  if (params?.offset !== undefined) query.append('offset', String(params.offset));
+  const qs = query.toString();
 
-  try {
-    const query = new URLSearchParams();
-    if (params?.limit !== undefined) query.append('limit', String(params.limit));
-    if (params?.offset !== undefined) query.append('offset', String(params.offset));
-    const qs = query.toString();
+  const response = await fetchWithTimeout(ctx, `${ctx.baseUrl}/v1/files${qs ? `?${qs}` : ''}`, {
+    method: 'GET',
+    headers: buildHeaders(ctx as RequestContext),
+    ...getRequestCredentials(ctx as RequestContext),
+  });
 
-    const response = await fetch(`${ctx.baseUrl}/v1/files${qs ? `?${qs}` : ''}`, {
-      method: 'GET',
-      headers: buildHeaders(ctx as RequestContext),
-      ...getRequestCredentials(ctx as RequestContext),
-      signal: controller.signal,
-    });
-
-    clearTimeout(timeoutId);
-
-    if (!response.ok) {
-      const error = await createErrorFromResponse(
-        response,
-        'List files request failed',
-        '/v1/files',
-        'GET'
-      );
-      throw error;
-    }
-
-    return (await response.json()) as ListFilesResponse;
-  } finally {
-    clearTimeout(timeoutId);
+  if (!response.ok) {
+    const error = await createErrorFromResponse(
+      response,
+      'List files request failed',
+      '/v1/files',
+      'GET'
+    );
+    throw error;
   }
+
+  return (await response.json()) as ListFilesResponse;
 }
 
 // ---------------------------------------------------------------------------
@@ -247,33 +226,27 @@ export async function getFileInfo(
   ctx: FileUploadContext,
   fileId: string
 ): Promise<FileInfoResponse> {
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), ctx.timeout);
-
-  try {
-    const response = await fetch(`${ctx.baseUrl}/v1/files/${encodeURIComponent(fileId)}/info`, {
+  const response = await fetchWithTimeout(
+    ctx,
+    `${ctx.baseUrl}/v1/files/${encodeURIComponent(fileId)}/info`,
+    {
       method: 'GET',
       headers: buildHeaders(ctx as RequestContext),
       ...getRequestCredentials(ctx as RequestContext),
-      signal: controller.signal,
-    });
-
-    clearTimeout(timeoutId);
-
-    if (!response.ok) {
-      const error = await createErrorFromResponse(
-        response,
-        'File info request failed',
-        `/v1/files/${fileId}/info`,
-        'GET'
-      );
-      throw error;
     }
+  );
 
-    return (await response.json()) as FileInfoResponse;
-  } finally {
-    clearTimeout(timeoutId);
+  if (!response.ok) {
+    const error = await createErrorFromResponse(
+      response,
+      'File info request failed',
+      `/v1/files/${fileId}/info`,
+      'GET'
+    );
+    throw error;
   }
+
+  return (await response.json()) as FileInfoResponse;
 }
 
 // ---------------------------------------------------------------------------
@@ -283,33 +256,27 @@ export async function getFileAccessUrl(
   ctx: FileUploadContext,
   fileId: string
 ): Promise<FileAccessUrlResponse> {
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), ctx.timeout);
-
-  try {
-    const response = await fetch(`${ctx.baseUrl}/v1/files/${encodeURIComponent(fileId)}/url`, {
+  const response = await fetchWithTimeout(
+    ctx,
+    `${ctx.baseUrl}/v1/files/${encodeURIComponent(fileId)}/url`,
+    {
       method: 'GET',
       headers: buildHeaders(ctx as RequestContext),
       ...getRequestCredentials(ctx as RequestContext),
-      signal: controller.signal,
-    });
-
-    clearTimeout(timeoutId);
-
-    if (!response.ok) {
-      const error = await createErrorFromResponse(
-        response,
-        'File access URL request failed',
-        `/v1/files/${fileId}/url`,
-        'GET'
-      );
-      throw error;
     }
+  );
 
-    return (await response.json()) as FileAccessUrlResponse;
-  } finally {
-    clearTimeout(timeoutId);
+  if (!response.ok) {
+    const error = await createErrorFromResponse(
+      response,
+      'File access URL request failed',
+      `/v1/files/${fileId}/url`,
+      'GET'
+    );
+    throw error;
   }
+
+  return (await response.json()) as FileAccessUrlResponse;
 }
 
 // ---------------------------------------------------------------------------
@@ -318,33 +285,23 @@ export async function getFileAccessUrl(
 export async function getMultimodalConfig(
   ctx: FileUploadContext
 ): Promise<MultimodalConfigResponse> {
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), ctx.timeout);
+  const response = await fetchWithTimeout(ctx, `${ctx.baseUrl}/v1/config/multimodal`, {
+    method: 'GET',
+    headers: buildHeaders(ctx as RequestContext, {
+      accept: 'application/json',
+    }),
+    ...getRequestCredentials(ctx as RequestContext),
+  });
 
-  try {
-    const response = await fetch(`${ctx.baseUrl}/v1/config/multimodal`, {
-      method: 'GET',
-      headers: buildHeaders(ctx as RequestContext, {
-        accept: 'application/json',
-      }),
-      ...getRequestCredentials(ctx as RequestContext),
-      signal: controller.signal,
-    });
-
-    clearTimeout(timeoutId);
-
-    if (!response.ok) {
-      const error = await createErrorFromResponse(
-        response,
-        'Multimodal config request failed',
-        '/v1/config/multimodal',
-        'GET'
-      );
-      throw error;
-    }
-
-    return (await response.json()) as MultimodalConfigResponse;
-  } finally {
-    clearTimeout(timeoutId);
+  if (!response.ok) {
+    const error = await createErrorFromResponse(
+      response,
+      'Multimodal config request failed',
+      '/v1/config/multimodal',
+      'GET'
+    );
+    throw error;
   }
+
+  return (await response.json()) as MultimodalConfigResponse;
 }

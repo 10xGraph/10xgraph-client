@@ -620,4 +620,44 @@ describe('List Memories Endpoint Tests', () => {
       }
     });
   });
+
+  describe('Paging', () => {
+    const page = (extra: Record<string, unknown> = {}) =>
+      new Response(
+        JSON.stringify({
+          data: { memories: [], has_more: true, next_offset: 2, ...extra },
+          metadata: {},
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } }
+      );
+
+    it('sends offset when given and returns has_more and next_offset', async () => {
+      fetchMock.mockResolvedValueOnce(page());
+
+      const result = await listMemories(mockContext, { ...mockRequest, limit: 2, offset: 4 });
+
+      const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+      expect(body.offset).toBe(4);
+      expect(body.limit).toBe(2);
+      expect(result.data.has_more).toBe(true);
+      expect(result.data.next_offset).toBe(2);
+    });
+
+    it('omits offset when not given, so older servers see the same body', async () => {
+      fetchMock.mockResolvedValueOnce(page());
+
+      await listMemories(mockContext, mockRequest);
+
+      const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+      expect('offset' in body).toBe(false);
+    });
+
+    it('sends offset 0 explicitly', async () => {
+      fetchMock.mockResolvedValueOnce(page());
+
+      await listMemories(mockContext, { ...mockRequest, offset: 0 });
+
+      expect(JSON.parse(fetchMock.mock.calls[0][1].body).offset).toBe(0);
+    });
+  });
 });

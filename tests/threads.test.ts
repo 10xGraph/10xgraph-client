@@ -343,11 +343,10 @@ describe('Threads Endpoint Tests', () => {
           })
       );
 
-      await expect(threads(slowContext)).rejects.toThrow();
-
-      expect(consoleWarnSpy).toHaveBeenCalledWith(
-        'TenxGraphClient: Threads list fetch timeout after 50ms'
-      );
+      await expect(threads(slowContext)).rejects.toMatchObject({
+        name: 'RequestTimeoutError',
+        message: 'Request timeout after 50ms',
+      });
 
       consoleWarnSpy.mockRestore();
     });

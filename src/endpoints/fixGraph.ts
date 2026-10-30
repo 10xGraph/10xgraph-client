@@ -1,6 +1,11 @@
 import { ResponseMetadata } from './metadata.js';
 import { createErrorFromResponse } from '../errors.js';
-import { buildHeaders, getRequestCredentials, RequestContext } from '../request.js';
+import {
+  buildHeaders,
+  getRequestCredentials,
+  RequestContext,
+  fetchWithTimeout,
+} from '../request.js';
 
 export interface FixGraphContext extends RequestContext {}
 
@@ -43,10 +48,7 @@ export async function fixGraph(
       console.debug('TenxGraphClient: Fixing graph state for thread:', request.thread_id);
     }
 
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), context.timeout);
-
-    const response = await fetch(`${context.baseUrl}/v1/graph/fix`, {
+    const response = await fetchWithTimeout(context, `${context.baseUrl}/v1/graph/fix`, {
       method: 'POST',
       headers: buildHeaders(context as RequestContext, {
         'Content-Type': 'application/json',
@@ -54,10 +56,7 @@ export async function fixGraph(
       }),
       ...getRequestCredentials(context as RequestContext),
       body: JSON.stringify(request),
-      signal: controller.signal,
     });
-
-    clearTimeout(timeoutId);
 
     if (!response.ok) {
       console.warn(`TenxGraphClient: Fix graph failed with HTTP ${response.status}`);
@@ -83,11 +82,6 @@ export async function fixGraph(
   } catch (error) {
     if (context.debug) {
       console.debug('TenxGraphClient: Fix graph failed:', error);
-    }
-
-    if ((error as Error).name === 'AbortError') {
-      console.warn(`TenxGraphClient: Fix graph timeout after ${context.timeout}ms`);
-      throw new Error(`Request timeout after ${context.timeout}ms`);
     }
 
     console.error('TenxGraphClient: Fix graph failed:', error);

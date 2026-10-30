@@ -15,7 +15,7 @@ there. If it is about graph execution, it belongs in the core
 
 ## Setup
 
-Requires Node 18 or newer.
+Requires Node 20 or newer.
 
 ```bash
 git clone https://github.com/10xGraph/10xgraph-client.git

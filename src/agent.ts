@@ -1,18 +1,31 @@
 import { Message } from './message.js';
 
 // Define ExecutionMeta interface
-interface ExecutionMeta {
+export interface ExecutionMeta {
   current_node: string;
   step: number;
+  /** Server execution status, e.g. 'running', 'interrupted_before', 'completed'. */
+  status?: string;
+  interrupted_node?: string | null;
+  interrupt_reason?: string | null;
+  interrupt_data?: Record<string, any> | null;
+  thread_id?: string | null;
+  run_id?: string | null;
+  stop_current_execution?: string;
+  internal_data?: Record<string, any>;
+  /** @deprecated The server never sends this field. Read `status` / `interrupted_node`. */
   interrupt?: {
     node: string;
     reason: string;
     status: string;
     data?: Record<string, any>;
   };
-  is_running: boolean;
-  is_interrupted: boolean;
-  is_stopped_requested: boolean;
+  /** @deprecated The server never sends this field. Read `status`. */
+  is_running?: boolean;
+  /** @deprecated The server never sends this field. Read `status`. */
+  is_interrupted?: boolean;
+  /** @deprecated The server never sends this field. Read `stop_current_execution`. */
+  is_stopped_requested?: boolean;
 }
 
 // Define default ExecutionMeta implementation

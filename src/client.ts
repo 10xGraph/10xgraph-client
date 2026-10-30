@@ -158,11 +158,16 @@ import {
   DeleteFileContext,
   DeleteFileResponse,
 } from './endpoints/deleteFile.js';
-import { TenxGraphAuth, RequestContext } from './request.js';
+import { serializeMessage } from './endpoints/stream.js';
+import { TenxGraphAuth, RequestContext, RequestOptions, normalizeBaseUrl } from './request.js';
 
 export interface TenxGraphConfig {
   baseUrl: string;
-  authToken?: string | null;
+  /**
+   * Bearer token, or a function returning one. A function is called before every request,
+   * so a short-lived JWT can be refreshed without rebuilding the client.
+   */
+  authToken?: string | null | (() => string | null | undefined);
   auth?: TenxGraphAuth | null;
   headers?: HeadersInit;
   credentials?: RequestCredentials;
@@ -226,7 +231,7 @@ function normalizeThreadMessagesRequest(
 
 export class TenxGraphClient {
   private baseUrl: string;
-  private authToken?: string | null;
+  private authToken?: string | null | (() => string | null | undefined);
   private auth?: TenxGraphAuth | null;
   private headers?: HeadersInit;
   private credentials?: RequestCredentials;
@@ -236,7 +241,7 @@ export class TenxGraphClient {
   private toolExecutor: ToolExecutor;
 
   constructor(config: TenxGraphConfig) {
-    this.baseUrl = config.baseUrl;
+    this.baseUrl = normalizeBaseUrl(config.baseUrl);
     this.authToken = config.authToken;
     this.auth = config.auth;
     this.headers = config.headers;
@@ -247,10 +252,26 @@ export class TenxGraphClient {
     this.toolExecutor = new ToolExecutor([]);
   }
 
-  private createContext<T extends RequestContext>(): T {
+  /**
+   * Replace the bearer token used for later requests (for example after a refresh).
+   * Does not touch an open stream or socket.
+   */
+  setAuthToken(token: string | null | (() => string | null | undefined)): void {
+    this.authToken = token;
+  }
+
+  /** Drop the bearer token and any `auth` credentials. Later requests are sent without them. */
+  clearAuth(): void {
+    this.authToken = null;
+    this.auth = null;
+  }
+
+  private createContext<T extends RequestContext>(options?: RequestOptions): T {
+    const token = typeof this.authToken === 'function' ? this.authToken() : this.authToken;
     return {
       baseUrl: this.baseUrl,
-      authToken: this.authToken,
+      authToken: token,
+      signal: options?.signal,
       auth: this.auth,
       headers: this.headers,
       credentials: this.credentials,
@@ -282,8 +303,8 @@ export class TenxGraphClient {
   /**
    * Ping the server to check connectivity
    */
-  async ping(): Promise<PingResponse> {
-    const context = this.createContext<PingContext>();
+  async ping(options?: RequestOptions): Promise<PingResponse> {
+    const context = this.createContext<PingContext>(options);
 
     return ping(context);
   }
@@ -291,8 +312,8 @@ export class TenxGraphClient {
   /**
    * Fetch the agent graph
    */
-  async graph(): Promise<GraphResponse> {
-    const context = this.createContext<GraphContext>();
+  async graph(options?: RequestOptions): Promise<GraphResponse> {
+    const context = this.createContext<GraphContext>(options);
 
     return graph(context);
   }
@@ -301,8 +322,8 @@ export class TenxGraphClient {
    * Fetch the tools exposed by the graph's tool nodes, grouped by node.
    * Each tool is tagged with its source (local / mcp / remote).
    */
-  async graphTools(): Promise<GraphToolsResponse> {
-    const context = this.createContext<GraphToolsContext>();
+  async graphTools(options?: RequestOptions): Promise<GraphToolsResponse> {
+    const context = this.createContext<GraphToolsContext>(options);
 
     return graphTools(context);
   }
@@ -311,8 +332,12 @@ export class TenxGraphClient {
    * Fetch the reconstructed observability trace (spans, events, cost) for a
    * thread. Returns the latest run by default, or a specific run when given.
    */
-  async observability(threadId: string, runId?: string): Promise<ObservabilityResponse> {
-    const context = this.createContext<ObservabilityContext>();
+  async observability(
+    threadId: string,
+    runId?: string,
+    options?: RequestOptions
+  ): Promise<ObservabilityResponse> {
+    const context = this.createContext<ObservabilityContext>(options);
 
     return observability(context, threadId, runId);
   }
@@ -323,8 +348,12 @@ export class TenxGraphClient {
    * @param config - Optional configuration for the stop operation
    * @returns StopGraphResponse with the stop operation result
    */
-  async stopGraph(threadId: string, config?: Record<string, any>): Promise<StopGraphResponse> {
-    const context = this.createContext<StopGraphContext>();
+  async stopGraph(
+    threadId: string,
+    config?: Record<string, any>,
+    options?: RequestOptions
+  ): Promise<StopGraphResponse> {
+    const context = this.createContext<StopGraphContext>(options);
 
     const request: StopGraphRequest = {
       thread_id: threadId,
@@ -346,8 +375,12 @@ export class TenxGraphClient {
    * @param config - Optional configuration for the fix operation
    * @returns FixGraphResponse with the fix operation result including removed_count
    */
-  async fixGraph(threadId: string, config?: Record<string, any>): Promise<FixGraphResponse> {
-    const context = this.createContext<FixGraphContext>();
+  async fixGraph(
+    threadId: string,
+    config?: Record<string, any>,
+    options?: RequestOptions
+  ): Promise<FixGraphResponse> {
+    const context = this.createContext<FixGraphContext>(options);
 
     const request: FixGraphRequest = {
       thread_id: threadId,
@@ -363,8 +396,8 @@ export class TenxGraphClient {
     /**
      * Fetch the state schema of the agent
      */
-  async graphStateSchema(): Promise<StateSchemaResponse> {
-    const context = this.createContext<StateSchemaContext>();
+  async graphStateSchema(options?: RequestOptions): Promise<StateSchemaResponse> {
+    const context = this.createContext<StateSchemaContext>(options);
 
     return stateSchema(context);
   }
@@ -378,8 +411,11 @@ export class TenxGraphClient {
    * @param threadId - The ID of the thread to fetch state for
    * @returns ThreadStateResponse containing the thread's current state
    */
-  async threadState(threadId: string | number): Promise<ThreadStateResponse> {
-    const context = this.createContext<ThreadStateContext>();
+  async threadState(
+    threadId: string | number,
+    options?: RequestOptions
+  ): Promise<ThreadStateResponse> {
+    const context = this.createContext<ThreadStateContext>(options);
 
     return threadState(context, threadId);
   }
@@ -394,9 +430,10 @@ export class TenxGraphClient {
   async updateThreadState(
     threadId: string | number,
     config: Record<string, any>,
-    state: any // AgentState
+    state: any, // AgentState
+    options?: RequestOptions
   ): Promise<UpdateThreadStateResponse> {
-    const context = this.createContext<UpdateThreadStateContext>();
+    const context = this.createContext<UpdateThreadStateContext>(options);
 
     const request: UpdateThreadStateRequest = {
       config,
@@ -411,8 +448,11 @@ export class TenxGraphClient {
    * @param threadId - The ID of the thread to clear state for
    * @returns ClearThreadStateResponse with the clear operation result
    */
-  async clearThreadState(threadId: string | number): Promise<ClearThreadStateResponse> {
-    const context = this.createContext<ClearThreadStateContext>();
+  async clearThreadState(
+    threadId: string | number,
+    options?: RequestOptions
+  ): Promise<ClearThreadStateResponse> {
+    const context = this.createContext<ClearThreadStateContext>(options);
 
     return clearThreadState(context, threadId);
   }
@@ -422,8 +462,11 @@ export class TenxGraphClient {
    * @param threadId - The ID of the thread to fetch
    * @returns ThreadDetailsResponse containing thread details
    */
-  async threadDetails(threadId: string | number): Promise<ThreadDetailsResponse> {
-    const context = this.createContext<ThreadDetailsContext>();
+  async threadDetails(
+    threadId: string | number,
+    options?: RequestOptions
+  ): Promise<ThreadDetailsResponse> {
+    const context = this.createContext<ThreadDetailsContext>(options);
 
     return threadDetails(context, threadId);
   }
@@ -436,14 +479,20 @@ export class TenxGraphClient {
    * @returns ThreadsResponse containing the list of threads and metadata
    */
   async threads(): Promise<ThreadsResponse>;
-  async threads(request: ThreadsRequest): Promise<ThreadsResponse>;
+  async threads(request: ThreadsRequest, options?: RequestOptions): Promise<ThreadsResponse>;
   async threads(
     search?: string | ThreadsRequest,
-    offset?: number,
-    limit?: number
+    offset?: number | RequestOptions,
+    limit?: number,
+    options?: RequestOptions
   ): Promise<ThreadsResponse> {
-    const context = this.createContext<ThreadsContext>();
-    const request = normalizeThreadsRequest(search, offset, limit);
+    const requestOptions = typeof offset === 'object' ? offset : options;
+    const context = this.createContext<ThreadsContext>(requestOptions);
+    const request = normalizeThreadsRequest(
+      search,
+      typeof offset === 'number' ? offset : undefined,
+      limit
+    );
 
     return threads(context, request);
   }
@@ -458,16 +507,24 @@ export class TenxGraphClient {
    */
   async threadMessages(
     threadId: string | number,
-    request: Omit<ThreadMessagesRequest, 'threadId'>
+    request: Omit<ThreadMessagesRequest, 'threadId'>,
+    options?: RequestOptions
   ): Promise<ThreadMessagesResponse>;
   async threadMessages(
     threadId: string | number,
     search?: string | Omit<ThreadMessagesRequest, 'threadId'>,
-    offset?: number,
-    limit?: number
+    offset?: number | RequestOptions,
+    limit?: number,
+    options?: RequestOptions
   ): Promise<ThreadMessagesResponse> {
-    const context = this.createContext<ThreadMessagesContext>();
-    const request = normalizeThreadMessagesRequest(threadId, search, offset, limit);
+    const requestOptions = typeof offset === 'object' ? offset : options;
+    const context = this.createContext<ThreadMessagesContext>(requestOptions);
+    const request = normalizeThreadMessagesRequest(
+      threadId,
+      search,
+      typeof offset === 'number' ? offset : undefined,
+      limit
+    );
 
     return threadMessages(context, request);
   }
@@ -488,9 +545,10 @@ export class TenxGraphClient {
     threadId: string | number,
     messages: Message[],
     config: Record<string, any> = {},
-    metadata?: Record<string, any>
+    metadata?: Record<string, any>,
+    options?: RequestOptions
   ): Promise<AddThreadMessagesResponse> {
-    const context = this.createContext<AddThreadMessagesContext>();
+    const context = this.createContext<AddThreadMessagesContext>(options);
 
     const request: AddThreadMessagesRequest = {
       threadId,
@@ -510,9 +568,10 @@ export class TenxGraphClient {
    */
   async singleMessage(
     threadId: string | number,
-    messageId: string
+    messageId: string,
+    options?: RequestOptions
   ): Promise<ThreadMessageResponse> {
-    const context = this.createContext<ThreadMessageContext>();
+    const context = this.createContext<ThreadMessageContext>(options);
 
     const request: ThreadMessageRequest = {
       threadId,
@@ -532,9 +591,10 @@ export class TenxGraphClient {
   async deleteMessage(
     threadId: string | number,
     messageId: string,
-    config?: Record<string, any>
+    config?: Record<string, any>,
+    options?: RequestOptions
   ): Promise<DeleteThreadMessageResponse> {
-    const context = this.createContext<DeleteThreadMessageContext>();
+    const context = this.createContext<DeleteThreadMessageContext>(options);
 
     const request: DeleteThreadMessageRequest = {
       threadId,
@@ -556,9 +616,10 @@ export class TenxGraphClient {
   async updateThreadMessageFeedback(
     threadId: string | number,
     messageId: string,
-    feedback: Record<string, unknown>
+    feedback: Record<string, unknown>,
+    options?: RequestOptions
   ): Promise<UpdateThreadMessageFeedbackResponse> {
-    const context = this.createContext<UpdateThreadMessageFeedbackContext>();
+    const context = this.createContext<UpdateThreadMessageFeedbackContext>(options);
 
     const request: UpdateThreadMessageFeedbackRequest = {
       threadId,
@@ -577,9 +638,10 @@ export class TenxGraphClient {
    */
   async deleteThread(
     threadId: string | number,
-    config?: Record<string, any>
+    config?: Record<string, any>,
+    options?: RequestOptions
   ): Promise<DeleteThreadResponse> {
-    const context = this.createContext<DeleteThreadContext>();
+    const context = this.createContext<DeleteThreadContext>(options);
 
     const request: DeleteThreadRequest = {
       threadId,
@@ -618,10 +680,10 @@ export class TenxGraphClient {
 
     // Prepare request
     const request: InvokeRequest = {
-      messages: messages.map((msg) => this.serializeMessage(msg)),
+      messages: messages.map((msg) => serializeMessage(msg)),
       initial_state: options?.initial_state,
       config: options?.config,
-      recursion_limit: options?.recursion_limit || 25,
+      recursion_limit: options?.recursion_limit ?? 25,
       on_busy: options?.on_busy,
       resume: options?.resume,
       interrupt_id: options?.interrupt_id,
@@ -678,10 +740,10 @@ export class TenxGraphClient {
 
     // Prepare request
     const request: StreamRequest = {
-      messages: messages.map((msg) => this.serializeMessage(msg)),
+      messages: messages.map((msg) => serializeMessage(msg)),
       initial_state: options?.initial_state,
       config: options?.config,
-      recursion_limit: options?.recursion_limit || 25,
+      recursion_limit: options?.recursion_limit ?? 25,
       on_busy: options?.on_busy,
       resume: options?.resume,
       interrupt_id: options?.interrupt_id,
@@ -749,7 +811,7 @@ export class TenxGraphClient {
     };
 
     const request: StreamRequest = {
-      messages: messages.map((msg) => this.serializeMessage(msg)),
+      messages: messages.map((msg) => serializeMessage(msg)),
       initial_state: options?.initial_state,
       config: options?.config,
       recursion_limit: options?.recursion_limit ?? 25,
@@ -772,7 +834,7 @@ export class TenxGraphClient {
    *
    * @example
    * ```ts
-   * const session = client.realtime({ model: 'gemini-2.5-flash-live' });
+   * const session = client.realtime({ model: 'gemini-3.8-live' });
    * session.on('audio', (pcm) => speaker.write(pcm));
    * session.on('output_transcript', (e) => console.log(e.text));
    * await session.ready;
@@ -780,7 +842,12 @@ export class TenxGraphClient {
    * ```
    */
   realtime(init: RealtimeInit, options?: RealtimeOptions): RealtimeSession {
-    const context = this.createContext<RealtimeContext>();
+    const context: RealtimeContext = {
+      ...this.createContext<RealtimeContext>(),
+      // Re-resolved on every reconnect so a refreshed token is used
+      getAuthToken: () =>
+        typeof this.authToken === 'function' ? this.authToken() : this.authToken,
+    };
     return new RealtimeSession(context, init, options);
   }
 
@@ -801,8 +868,11 @@ export class TenxGraphClient {
    * console.log('Memory stored with ID:', result.data.memory_id);
    * ```
    */
-  async storeMemory(request: StoreMemoryRequest): Promise<StoreMemoryResponse> {
-    const context = this.createContext<StoreMemoryContext>();
+  async storeMemory(
+    request: StoreMemoryRequest,
+    options?: RequestOptions
+  ): Promise<StoreMemoryResponse> {
+    const context = this.createContext<StoreMemoryContext>(options);
 
     return storeMemoryEndpoint(context, request);
   }
@@ -826,8 +896,11 @@ export class TenxGraphClient {
    * });
    * ```
    */
-  async searchMemory(request: SearchMemoryRequest): Promise<SearchMemoryResponse> {
-    const context = this.createContext<SearchMemoryContext>();
+  async searchMemory(
+    request: SearchMemoryRequest,
+    options?: RequestOptions
+  ): Promise<SearchMemoryResponse> {
+    const context = this.createContext<SearchMemoryContext>(options);
 
     return searchMemoryEndpoint(context, request);
   }
@@ -850,9 +923,9 @@ export class TenxGraphClient {
    */
   async getMemory(
     memoryId: string,
-    options?: { config?: Record<string, any>; options?: Record<string, any> }
+    options?: { config?: Record<string, any>; options?: Record<string, any>; signal?: AbortSignal }
   ): Promise<GetMemoryResponse> {
-    const context = this.createContext<GetMemoryContext>();
+    const context = this.createContext<GetMemoryContext>(options);
 
     const request: GetMemoryRequest = {
       memoryId,
@@ -886,9 +959,10 @@ export class TenxGraphClient {
       config?: Record<string, any>;
       options?: Record<string, any>;
       metadata?: Record<string, any>;
+      signal?: AbortSignal;
     }
   ): Promise<UpdateMemoryResponse> {
-    const context = this.createContext<UpdateMemoryContext>();
+    const context = this.createContext<UpdateMemoryContext>(options);
 
     const request: UpdateMemoryRequest = {
       memoryId,
@@ -919,9 +993,9 @@ export class TenxGraphClient {
    */
   async deleteMemory(
     memoryId: string,
-    options?: { config?: Record<string, any>; options?: Record<string, any> }
+    options?: { config?: Record<string, any>; options?: Record<string, any>; signal?: AbortSignal }
   ): Promise<DeleteMemoryResponse> {
-    const context = this.createContext<DeleteMemoryContext>();
+    const context = this.createContext<DeleteMemoryContext>(options);
 
     const request: DeleteMemoryRequest = {
       memoryId,
@@ -954,13 +1028,16 @@ export class TenxGraphClient {
     config?: Record<string, any>;
     options?: Record<string, any>;
     limit?: number;
+    offset?: number;
+    signal?: AbortSignal;
   }): Promise<ListMemoriesResponse> {
-    const context = this.createContext<ListMemoriesContext>();
+    const context = this.createContext<ListMemoriesContext>(options);
 
     const request: ListMemoriesRequest = {
       config: options?.config,
       options: options?.options,
       limit: options?.limit,
+      offset: options?.offset,
     };
 
     return listMemoriesEndpoint(context, request);
@@ -989,8 +1066,9 @@ export class TenxGraphClient {
     memory_type?: any;
     category?: string;
     filters?: Record<string, any>;
+    signal?: AbortSignal;
   }): Promise<ForgetMemoriesResponse> {
-    const context = this.createContext<ForgetMemoriesContext>();
+    const context = this.createContext<ForgetMemoriesContext>(options);
 
     const request: ForgetMemoriesRequest = {
       config: options?.config,
@@ -1021,17 +1099,18 @@ export class TenxGraphClient {
    * ```
    */
   async uploadFile(
-    file: File | Blob | { data: Blob; filename: string }
+    file: File | Blob | { data: Blob; filename: string },
+    options?: RequestOptions
   ): Promise<FileUploadResponse> {
-    const context = this.createContext<FileUploadContext>();
+    const context = this.createContext<FileUploadContext>(options);
     return uploadFileEndpoint(context, file);
   }
 
   /**
    * Download a file by its file_id. Returns raw Blob.
    */
-  async getFile(fileId: string): Promise<Blob> {
-    const context = this.createContext<FileUploadContext>();
+  async getFile(fileId: string, options?: RequestOptions): Promise<Blob> {
+    const context = this.createContext<FileUploadContext>(options);
     return getFileEndpoint(context, fileId);
   }
 
@@ -1039,16 +1118,16 @@ export class TenxGraphClient {
    * List the caller's uploaded files (GET /v1/files).
    * Throws a TenxGraphError with status 501 when the media store cannot enumerate files.
    */
-  async listFiles(params?: ListFilesRequest): Promise<ListFilesResponse> {
-    const context = this.createContext<FileUploadContext>();
+  async listFiles(params?: ListFilesRequest, options?: RequestOptions): Promise<ListFilesResponse> {
+    const context = this.createContext<FileUploadContext>(options);
     return listFilesEndpoint(context, params);
   }
 
   /**
    * Get metadata about a stored file.
    */
-  async getFileInfo(fileId: string): Promise<FileInfoResponse> {
-    const context = this.createContext<FileUploadContext>();
+  async getFileInfo(fileId: string, options?: RequestOptions): Promise<FileInfoResponse> {
+    const context = this.createContext<FileUploadContext>(options);
     return getFileInfoEndpoint(context, fileId);
   }
 
@@ -1057,8 +1136,8 @@ export class TenxGraphClient {
    * For cloud-backed media this will typically be a signed URL.
    * For local or memory-backed media this may fall back to the API file route.
    */
-  async getFileAccessUrl(fileId: string): Promise<FileAccessUrlResponse> {
-    const context = this.createContext<FileUploadContext>();
+  async getFileAccessUrl(fileId: string, options?: RequestOptions): Promise<FileAccessUrlResponse> {
+    const context = this.createContext<FileUploadContext>(options);
     return getFileAccessUrlEndpoint(context, fileId);
   }
 
@@ -1070,69 +1149,16 @@ export class TenxGraphClient {
    * @param fileId - The file_id returned by `uploadFile`
    * @returns DeleteFileResponse with `data.file_id` and `data.deleted`
    */
-  async deleteFile(fileId: string): Promise<DeleteFileResponse> {
-    const context = this.createContext<DeleteFileContext>();
+  async deleteFile(fileId: string, options?: RequestOptions): Promise<DeleteFileResponse> {
+    const context = this.createContext<DeleteFileContext>(options);
     return deleteFileEndpoint(context, fileId);
   }
 
   /**
    * Get the current multimodal configuration from the server.
    */
-  async getMultimodalConfig(): Promise<MultimodalConfigResponse> {
-    const context = this.createContext<FileUploadContext>();
+  async getMultimodalConfig(options?: RequestOptions): Promise<MultimodalConfigResponse> {
+    const context = this.createContext<FileUploadContext>(options);
     return getMultimodalConfigEndpoint(context);
-  }
-
-  /**
-   * Serialize a Message object for API transmission
-   * Converts Message class instances to plain objects
-   */
-  private serializeMessage(message: Message): any {
-    const serialized: any = {
-      role: message.role,
-      content: this.cleanContent(message.content),
-    };
-
-    // message_id: use "0" if not set (server will generate one)
-    if (message.message_id !== null && message.message_id !== undefined) {
-      serialized.message_id = String(message.message_id);
-    } else {
-      serialized.message_id = '0';
-    }
-
-    // Only include optional fields if they are explicitly set
-    if (message.tools_calls) {
-      serialized.tools_calls = message.tools_calls;
-    }
-    if (message.metadata && Object.keys(message.metadata).length > 0) {
-      serialized.metadata = message.metadata;
-    }
-
-    return serialized;
-  }
-
-  /**
-   * Clean content blocks by removing empty arrays and undefined values
-   * Server requires array of content blocks, not simplified string
-   */
-  private cleanContent(content: any[]): any[] {
-    // Always return as array of blocks (server requires this format)
-    return content.map((block) => {
-      const cleaned: any = {};
-
-      for (const [key, value] of Object.entries(block)) {
-        // Skip empty arrays
-        if (Array.isArray(value) && value.length === 0) {
-          continue;
-        }
-        // Skip undefined values
-        if (value === undefined) {
-          continue;
-        }
-        cleaned[key] = value;
-      }
-
-      return cleaned;
-    });
   }
 }

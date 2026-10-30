@@ -79,6 +79,7 @@ describe('TenxGraphClient auth configuration', () => {
         'Content-Type': 'application/json',
         'X-API-Key': 'secret-key',
       },
+      redirect: 'manual',
       signal: expect.any(AbortSignal),
     });
   });

@@ -1,6 +1,12 @@
 import { ResponseMetadata } from './metadata.js';
 import { createErrorFromResponse } from '../errors.js';
-import { buildHeaders, getRequestCredentials, RequestContext } from '../request.js';
+import {
+  buildHeaders,
+  getRequestCredentials,
+  RequestContext,
+  fetchWithTimeout,
+  encodePathSegment,
+} from '../request.js';
 
 export interface DeleteThreadMessageContext extends RequestContext {}
 
@@ -34,12 +40,9 @@ export async function deleteThreadMessage(
       );
     }
 
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), context.timeout);
+    const url = `${context.baseUrl}/v1/threads/${encodePathSegment(request.threadId)}/messages/${encodePathSegment(request.messageId)}`;
 
-    const url = `${context.baseUrl}/v1/threads/${request.threadId}/messages/${request.messageId}`;
-
-    const response = await fetch(url, {
+    const response = await fetchWithTimeout(context, url, {
       method: 'DELETE',
       headers: buildHeaders(context as RequestContext, {
         'Content-Type': 'application/json',
@@ -47,10 +50,7 @@ export async function deleteThreadMessage(
       }),
       ...getRequestCredentials(context as RequestContext),
       body: JSON.stringify({ config: request.config || {} }),
-      signal: controller.signal,
     });
-
-    clearTimeout(timeoutId);
 
     if (!response.ok) {
       console.warn(`TenxGraphClient: Delete thread message failed with HTTP ${response.status}`);
@@ -71,10 +71,6 @@ export async function deleteThreadMessage(
 
     return data;
   } catch (error) {
-    if ((error as Error).name === 'AbortError') {
-      console.warn(`TenxGraphClient: Delete thread message timeout after ${context.timeout}ms`);
-      throw new Error(`Request timeout after ${context.timeout}ms`);
-    }
     if (context.debug) {
       console.debug('TenxGraphClient: Delete thread message failed:', error);
     }

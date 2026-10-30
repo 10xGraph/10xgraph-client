@@ -1,7 +1,13 @@
 import { ResponseMetadata } from './metadata.js';
 import { Message } from '../message.js';
 import { createErrorFromResponse } from '../errors.js';
-import { buildHeaders, getRequestCredentials, RequestContext } from '../request.js';
+import {
+  buildHeaders,
+  getRequestCredentials,
+  RequestContext,
+  fetchWithTimeout,
+  encodePathSegment,
+} from '../request.js';
 
 export interface ThreadMessagesContext extends RequestContext {}
 
@@ -42,9 +48,6 @@ export async function threadMessages(
       console.debug('TenxGraphClient: Fetching thread messages for thread', request.threadId);
     }
 
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), context.timeout);
-
     // Build query parameters
     const params = new URLSearchParams();
     if (request.search !== undefined) {
@@ -58,18 +61,15 @@ export async function threadMessages(
     }
 
     const queryString = params.toString();
-    const url = `${context.baseUrl}/v1/threads/${request.threadId}/messages${queryString ? '?' + queryString : ''}`;
+    const url = `${context.baseUrl}/v1/threads/${encodePathSegment(request.threadId)}/messages${queryString ? '?' + queryString : ''}`;
 
-    const response = await fetch(url, {
+    const response = await fetchWithTimeout(context, url, {
       method: 'GET',
       headers: buildHeaders(context as RequestContext, {
         'Content-Type': 'application/json',
       }),
       ...getRequestCredentials(context as RequestContext),
-      signal: controller.signal,
     });
-
-    clearTimeout(timeoutId);
 
     if (!response.ok) {
       console.warn(

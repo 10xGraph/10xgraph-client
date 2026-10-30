@@ -1,6 +1,11 @@
 import { ResponseMetadata } from './metadata.js';
 import { createErrorFromResponse } from '../errors.js';
-import { buildHeaders, getRequestCredentials, RequestContext } from '../request.js';
+import {
+  buildHeaders,
+  getRequestCredentials,
+  RequestContext,
+  fetchWithTimeout,
+} from '../request.js';
 import { MemoryResult } from './searchMemory.js';
 
 export interface ListMemoriesContext extends RequestContext {}
@@ -9,10 +14,16 @@ export interface ListMemoriesRequest {
   config?: Record<string, any>;
   options?: Record<string, any>;
   limit?: number;
+  /** Memories to skip, for paging. Use `next_offset` from the previous page. Needs 10xgraph-api with paging support. */
+  offset?: number;
 }
 
 export interface ListMemoriesData {
   memories: MemoryResult[];
+  /** True when more memories follow this page. Absent on servers without paging. */
+  has_more?: boolean;
+  /** Offset to request next, or null on the last page. */
+  next_offset?: number | null;
 }
 
 export interface ListMemoriesResponse {
@@ -31,17 +42,18 @@ export async function listMemories(
       });
     }
 
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), context.timeout);
-
     const url = `${context.baseUrl}/v1/store/memories/list`;
 
     // Prepare request body
-    const body = {
+    // `offset` is sent only when given, so a call without it matches older servers.
+    const body: Record<string, unknown> = {
       config: request.config || {},
       options: request.options || {},
       limit: request.limit || 100,
     };
+    if (request.offset !== undefined) {
+      body.offset = request.offset;
+    }
 
     if (context.debug) {
       console.debug(
@@ -50,7 +62,7 @@ export async function listMemories(
       );
     }
 
-    const response = await fetch(url, {
+    const response = await fetchWithTimeout(context, url, {
       method: 'POST',
       headers: buildHeaders(context as RequestContext, {
         'Content-Type': 'application/json',
@@ -58,10 +70,7 @@ export async function listMemories(
       }),
       ...getRequestCredentials(context as RequestContext),
       body: JSON.stringify(body),
-      signal: controller.signal,
     });
-
-    clearTimeout(timeoutId);
 
     if (!response.ok) {
       console.warn(`TenxGraphClient: List memories failed with HTTP ${response.status}`);
@@ -85,10 +94,6 @@ export async function listMemories(
 
     return data;
   } catch (error) {
-    if ((error as Error).name === 'AbortError') {
-      console.warn(`TenxGraphClient: List memories timeout after ${context.timeout}ms`);
-      throw new Error(`Request timeout after ${context.timeout}ms`);
-    }
     if (context.debug) {
       console.debug('TenxGraphClient: List memories failed:', error);
     }

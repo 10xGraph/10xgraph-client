@@ -328,7 +328,7 @@ describe('Thread Message Endpoint Tests', () => {
       );
       expect(consoleDebugSpy).toHaveBeenCalledWith(
         'TenxGraphClient: Thread message fetch failed:',
-        error
+        expect.objectContaining({ cause: error })
       );
     });
   });

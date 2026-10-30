@@ -67,6 +67,9 @@ export * from './endpoints/invoke.js';
 // Export stream types
 export * from './endpoints/stream.js';
 
+// Export interrupt payload type and approve/reject helpers
+export * from './interrupt.js';
+
 // Export WebSocket stream types
 export * from './endpoints/wsStream.js';
 

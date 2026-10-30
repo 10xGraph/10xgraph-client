@@ -1,6 +1,12 @@
 import { ResponseMetadata } from './metadata.js';
 import { createErrorFromResponse } from '../errors.js';
-import { buildHeaders, getRequestCredentials, RequestContext } from '../request.js';
+import {
+  buildHeaders,
+  getRequestCredentials,
+  RequestContext,
+  fetchWithTimeout,
+  encodePathSegment,
+} from '../request.js';
 
 export interface UpdateMemoryContext extends RequestContext {}
 
@@ -31,10 +37,7 @@ export async function updateMemory(
       console.debug('TenxGraphClient: Updating memory with ID:', request.memoryId);
     }
 
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), context.timeout);
-
-    const url = `${context.baseUrl}/v1/store/memories/${request.memoryId}`;
+    const url = `${context.baseUrl}/v1/store/memories/${encodePathSegment(request.memoryId)}`;
 
     // Prepare request body
     const body = {
@@ -48,17 +51,14 @@ export async function updateMemory(
       console.debug('TenxGraphClient: Request payload:', JSON.stringify(body, null, 2));
     }
 
-    const response = await fetch(url, {
+    const response = await fetchWithTimeout(context, url, {
       method: 'PUT',
       headers: buildHeaders(context as RequestContext, {
         'Content-Type': 'application/json',
       }),
       ...getRequestCredentials(context as RequestContext),
       body: JSON.stringify(body),
-      signal: controller.signal,
     });
-
-    clearTimeout(timeoutId);
 
     if (!response.ok) {
       console.warn(`TenxGraphClient: Update memory failed with HTTP ${response.status}`);
