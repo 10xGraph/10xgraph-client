@@ -26,12 +26,12 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
-## [1.0.0] - Unreleased
+## [1.0.0-rc.2] - 2026-10-30
 
-The stable 1.0 release of `10xgraph-client`, aligned with `10xgraph` and `10xgraph-api` 1.0. It
-includes everything in `1.0.0-rc.1` and `1.0.0-rc.2` below, plus the changes here. Use it with
-`10xgraph-api` 1.0. The client API is source compatible with 0.6.0; the one hard requirement
-change is Node.js 20.
+The second release candidate of `10xgraph-client` 1.0, aligned with `10xgraph` and `10xgraph-api`
+1.0.0rc2. It is `1.0.0-rc.1` below plus the changes here. Use it with `10xgraph-api` 1.0.0rc2. New
+response fields are typed optional, so the client still works against older servers. The client
+API is source compatible with 0.6.0; the one hard requirement change is Node.js 20.
 
 ### Breaking
 
@@ -40,8 +40,7 @@ change is Node.js 20.
 
 ### Upgrade notes
 
-- With `10xgraph-api` 1.0 a client that invents a thread id for a new conversation gets HTTP
-  403. Omit `thread_id` on the first request and reuse the id the server returns (see
+- With `10xgraph-api` 1.0 a client that invents a thread id for a new conversation gets HTTP 403. Omit `thread_id` on the first request and reuse the id the server returns (see
   `1.0.0-rc.1` below).
 - Behaviour you may notice, none of it a signature change:
   - `stream()` and `wsStream()` now throw (`StreamError`, `WebSocketError`) when a stream is cut
@@ -75,6 +74,23 @@ change is Node.js 20.
   many memories can page. Needs `10xgraph-api` 1.0.
 - CommonJS consumers get their own type declarations (`dist/cjs/index.d.ts`) through the
   `exports` map, so `require` works with `nodenext` type checking.
+- `signal?: AbortSignal` option on `invoke()`, `stream()` and `wsStream()`. Aborting it cancels the
+  in-flight request (and the open stream body or WebSocket). The call rejects with the abort error
+  (`name === 'AbortError'`), not the "Request timeout" error. A signal that is already aborted
+  rejects before any request is sent.
+- `listFiles(params?)` for `GET /v1/files` (`{ limit?, offset? }`), with `ListFilesRequest`,
+  `ListFilesResponse`, `FileListItem`. A media store that cannot enumerate files answers 501,
+  thrown as a `TenxGraphError`.
+- `has_more`, `offset` and `limit` on the `threads()` and `threadMessages()` response data.
+- Observability types for the run trace: per-span `status`, `error`, `inputs`, `outputs`, `step`,
+  `visit`, `total_tokens`, `reasoning_tokens`, `tool_name`, `tool_call_id`; run-level `error`,
+  `model`, `models`, `notes`; payload-level `enabled` and `reason` (`ObsEmptyReason`), so a UI can
+  tell "tracing is off" from "no runs yet". New `ObsMessageSummary` type.
+- `GraphInfo.realtime_options` (`GraphRealtimeOptions`): the Live init options the server honors, null
+  for non-realtime graphs.
+- Eval report types for the extended report: case `error` and `error` status, rubric
+  `kind`, `passed`, `threshold`, `details`, `error`, case `expected_detail`, run `counts`, and
+  `errors` on run summaries.
 
 ### Changed
 
@@ -127,36 +143,6 @@ change is Node.js 20.
   reported to the caller instead of ending silently.
 - Endpoint calls that time out throw `RequestTimeoutError`, not a raw `AbortError`, and
   `forgetMemories()` throws a typed error, not a plain `Error`.
-
----
-
-## [1.0.0-rc.2] - Unreleased
-
-All changes are additive. Several new response fields need `10xgraph-api` 1.0.0rc1 or later and are
-typed optional, so the client still works against older servers.
-
-### Added
-
-- `signal?: AbortSignal` option on `invoke()`, `stream()` and `wsStream()`. Aborting it cancels the
-  in-flight request (and the open stream body or WebSocket). The call rejects with the abort error
-  (`name === 'AbortError'`), not the "Request timeout" error. A signal that is already aborted
-  rejects before any request is sent.
-- `listFiles(params?)` for `GET /v1/files` (`{ limit?, offset? }`), with `ListFilesRequest`,
-  `ListFilesResponse`, `FileListItem`. A media store that cannot enumerate files answers 501,
-  thrown as a `TenxGraphError`.
-- `has_more`, `offset` and `limit` on the `threads()` and `threadMessages()` response data.
-- Observability types for the run trace: per-span `status`, `error`, `inputs`, `outputs`, `step`,
-  `visit`, `total_tokens`, `reasoning_tokens`, `tool_name`, `tool_call_id`; run-level `error`,
-  `model`, `models`, `notes`; payload-level `enabled` and `reason` (`ObsEmptyReason`), so a UI can
-  tell "tracing is off" from "no runs yet". New `ObsMessageSummary` type.
-- `GraphInfo.realtime_options` (`GraphRealtimeOptions`): the Live init options the server honors, null
-  for non-realtime graphs.
-- Eval report types for the extended report: case `error` and `error` status, rubric
-  `kind`, `passed`, `threshold`, `details`, `error`, case `expected_detail`, run `counts`, and
-  `errors` on run summaries.
-
-### Fixed
-
 - `searchMemory()` no longer sends `memory_type: 'episodic'`, `category: ''` and
   `score_threshold: 0` when you leave them unset. They are omitted so the server applies no filter,
   and a search without a type now covers all memory types. Pass `memory_type` explicitly to keep

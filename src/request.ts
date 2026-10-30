@@ -201,7 +201,10 @@ export function encodePathSegment(value: string | number): string {
 
 /** Strip trailing slashes so `${baseUrl}/path` never produces `//path`. */
 export function normalizeBaseUrl(baseUrl: string): string {
-  return baseUrl.replace(/\/+$/, '');
+  // A loop, not /\/+$/: that regex is quadratic on input with many slashes (CodeQL js/polynomial-redos).
+  let end = baseUrl.length;
+  while (end > 0 && baseUrl.charCodeAt(end - 1) === 47 /* '/' */) end--;
+  return baseUrl.slice(0, end);
 }
 
 const MAX_REDIRECTS = 5;

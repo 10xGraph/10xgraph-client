@@ -834,7 +834,7 @@ export class TenxGraphClient {
    *
    * @example
    * ```ts
-   * const session = client.realtime({ model: 'gemini-2.5-flash-live' });
+   * const session = client.realtime({ model: 'gemini-3.8-live' });
    * session.on('audio', (pcm) => speaker.write(pcm));
    * session.on('output_transcript', (e) => console.log(e.text));
    * await session.ready;

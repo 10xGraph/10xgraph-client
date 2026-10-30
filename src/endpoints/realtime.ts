@@ -22,7 +22,7 @@ export interface RealtimeVADConfig {
 
 export interface RealtimeInit {
   /**
-   * e.g. "gemini-2.5-flash-live". Honoured only when the server lists it in
+   * e.g. "gemini-3.8-live". Honoured only when the server lists it in
    * `websocket.realtime_models`; otherwise the agent's own model is used.
    */
   model?: string;

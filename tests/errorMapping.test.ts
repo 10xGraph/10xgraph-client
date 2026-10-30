@@ -71,7 +71,11 @@ describe('createErrorFromResponse: bodies outside the envelope (G-14)', () => {
   });
 
   it('uses x-request-id when the body carries none', async () => {
-    const res = jsonResponse(409, { error: 'state_conflict', detail: 'd' }, { 'x-request-id': 'hdr-9' });
+    const res = jsonResponse(
+      409,
+      { error: 'state_conflict', detail: 'd' },
+      { 'x-request-id': 'hdr-9' }
+    );
     expect((await createErrorFromResponse(res)).requestId).toBe('hdr-9');
   });
 
@@ -92,18 +96,18 @@ describe('createErrorFromResponse: bodies outside the envelope (G-14)', () => {
 
 describe('createErrorFromResponse: real server error codes (G-159)', () => {
   it('RECURSION_001 -> GraphRecursionError', async () => {
-    expect(await createErrorFromResponse(jsonResponse(500, envelope('RECURSION_001')))).toBeInstanceOf(
-      GraphRecursionError
-    );
+    expect(
+      await createErrorFromResponse(jsonResponse(500, envelope('RECURSION_001')))
+    ).toBeInstanceOf(GraphRecursionError);
   });
   it('STORAGE_TRANSIENT_000 -> TransientStorageError', async () => {
     const err = await createErrorFromResponse(jsonResponse(503, envelope('STORAGE_TRANSIENT_000')));
     expect(err).toBeInstanceOf(TransientStorageError);
   });
   it('STORAGE_SCHEMA_000 -> SchemaVersionError', async () => {
-    expect(await createErrorFromResponse(jsonResponse(500, envelope('STORAGE_SCHEMA_000')))).toBeInstanceOf(
-      SchemaVersionError
-    );
+    expect(
+      await createErrorFromResponse(jsonResponse(500, envelope('STORAGE_SCHEMA_000')))
+    ).toBeInstanceOf(SchemaVersionError);
   });
   it('STORAGE_SERIALIZATION_000 -> SerializationError', async () => {
     expect(
@@ -111,9 +115,9 @@ describe('createErrorFromResponse: real server error codes (G-159)', () => {
     ).toBeInstanceOf(SerializationError);
   });
   it('STORAGE_000 -> StorageError', async () => {
-    expect(await createErrorFromResponse(jsonResponse(500, envelope('STORAGE_000')))).toBeInstanceOf(
-      StorageError
-    );
+    expect(
+      await createErrorFromResponse(jsonResponse(500, envelope('STORAGE_000')))
+    ).toBeInstanceOf(StorageError);
   });
   it('both validation codes map to ValidationError', async () => {
     for (const code of ['VALIDATION_ERROR', 'AGENTFLOW_VALIDATION_ERROR']) {

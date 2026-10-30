@@ -8,6 +8,7 @@ import {
   RequestTimeoutError,
   headerAuth,
 } from '../src/index.js';
+import { normalizeBaseUrl } from '../src/request.js';
 
 const okJson = (body: unknown = { data: {}, metadata: {} }) => ({
   ok: true,
@@ -107,6 +108,17 @@ describe('G-143: base URL and header-credential redirects', () => {
     fetchMock.mockResolvedValue(okJson());
     await new TenxGraphClient({ baseUrl: 'http://h///' }).ping();
     expect(fetchMock.mock.calls[0][0]).toBe('http://h/ping');
+  });
+
+  it('strips trailing slashes in linear time', () => {
+    expect(normalizeBaseUrl('http://h')).toBe('http://h');
+    expect(normalizeBaseUrl('///')).toBe('');
+    // Many slashes before a non-slash: the old /\/+$/ was quadratic on this.
+    const slashes = '/'.repeat(200_000);
+    const started = performance.now();
+    expect(normalizeBaseUrl(`${slashes}x`)).toBe(`${slashes}x`);
+    expect(normalizeBaseUrl(`x${slashes}`)).toBe('x');
+    expect(performance.now() - started).toBeLessThan(1000);
   });
 
   it('refuses a cross-origin redirect when header credentials are used', async () => {

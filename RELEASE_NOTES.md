@@ -5,6 +5,40 @@ Human-facing notes for the current release. For the full history see
 
 ---
 
+## 1.0.0-rc.2: second release candidate for 1.0
+
+Second release candidate, published to npm under the `next` dist-tag:
+
+```bash
+npm install 10xgraph-client@next
+```
+
+`npm install 10xgraph-client` still installs 0.6.0 until 1.0.0 is released. Use it with `10xgraph-api` 1.0.0rc2 (same `major.minor` as `10xgraph`). It is the `1.0.0-rc.1` release below plus the changes here, so if you jump from 0.6.0, read both sections. New response fields are typed optional, so the client still works against older servers, and the API is source compatible with 0.6.0.
+
+### Before you upgrade
+
+- **Node.js 18 is no longer supported.** `engines` is `node >= 20.0.0`; CI runs Node 20 and 22.
+- **`RealtimeSession.threadId` is now `string | null`.** Live sessions without a `thread_id` use the server-created id: the client sends none, reads the id from the new `session_started` event into `session.threadId`, and sends it back on reconnect. Code that read `threadId` as a `string` right after `realtime()` must handle `null` or wait for `session_started`. This needs `10xgraph-api` 1.0.
+- **Streams now throw when cut.** `stream()` and `wsStream()` throw `StreamError` or `WebSocketError` when a stream is cut or the server closes the socket mid-run. Before, they ended as if the run had succeeded.
+- **`timeout` is an idle timeout** on `stream()` and `wsStream()`: it limits how long the client waits on the network, not how long the whole run takes.
+- **Typed errors.** Timeouts and network failures are `RequestTimeoutError` and `NetworkError`, not plain `Error`. Code that matched on message text should check the class.
+- With `10xgraph-api` 1.0, a client that invents a thread id for a new conversation gets HTTP 403 (see rc.1 below).
+
+### What changed in rc.2
+
+- **Fixes:** leaving a `for await` loop over `stream()` early now cancels the request (before, the thread answered 409); a conflict throws `ConflictError` instead of a `TypeError`; `wsStream()` no longer hangs on an error chunk; `client.realtime()` no longer crashes Node on a failed connection; empty arrays are no longer stripped from messages and tool results.
+- **`searchMemory()`** no longer sends empty `memory_type`, `category` and `score_threshold` defaults. A search without a type now covers all memory types; pass `memory_type: 'episodic'` to keep the old behaviour.
+- **Auth and requests:** `authToken` can be a function called on every request and realtime reconnect, `setAuthToken` and `clearAuth` were added, and every request method takes a `signal` option.
+- **Interrupts:** `getInterrupt(chunk)`, `approveInterrupt` and `rejectInterrupt` return the `{ resume, interrupt_id }` to pass to `invoke()`, `stream()` or `wsStream()`.
+- **New errors:** `RequestTimeoutError`, `NetworkError`, `WebSocketError`, `StreamError` and `RateLimitError` (with `retryAfterSeconds`); errors carry `cause`, `endpoint`, `method` and `requestId`.
+- **New methods and fields:** `listFiles()`, paging on `listMemories` (`offset`, `has_more`, `next_offset`) and on thread lists, `GraphInfo.realtime_options`, run trace and eval report types, and remote tool `validate(args)` and `maxArgsBytes`.
+- **Realtime:** jittered reconnect backoff, and a fatal `policy_violation` error on close code 1008.
+- **Other:** path ids are percent-encoded, non-`Authorization` header credentials are not forwarded on cross-origin redirects, and CommonJS consumers get their own type declarations.
+
+See [CHANGELOG.md](CHANGELOG.md) for the full list.
+
+---
+
 ## 1.0.0-rc.1: release candidate for 1.0
 
 Release candidate for 1.0, published to npm under the `next` dist-tag:
@@ -13,8 +47,8 @@ Release candidate for 1.0, published to npm under the `next` dist-tag:
 npm install 10xgraph-client@next
 ```
 
-`npm install 10xgraph-client` still installs 0.6.0 until 1.0.0 is released. The client has no
-breaking change in this release.
+`npm install 10xgraph-client` still installs 0.6.0 until 1.0.0 is released. The client had no
+breaking change in rc.1 (see rc.2 above for what changed since).
 
 From 1.0, `major.minor` is identical across `10xgraph`, `10xgraph-api` and `10xgraph-client`.
 Use the client with a `10xgraph-api` of the same `major.minor`.

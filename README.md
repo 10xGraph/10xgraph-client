@@ -119,7 +119,7 @@ import { TenxGraphClient } from '10xgraph-client';
 const client = new TenxGraphClient({ baseUrl: 'http://localhost:8000', authToken });
 
 const session = client.realtime(
-  { model: 'gemini-2.5-flash-live', modalities: 'AUDIO' },
+  { model: 'gemini-3.8-live', modalities: 'AUDIO' },
   { reconnect: { maxAttempts: 5 } }
 );
 
