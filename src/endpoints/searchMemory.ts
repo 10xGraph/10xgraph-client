@@ -1,4 +1,5 @@
 import { ResponseMetadata } from './metadata.js';
+import { Filters } from '../filters.js';
 import { createErrorFromResponse } from '../errors.js';
 import {
   buildHeaders,
@@ -39,7 +40,8 @@ export interface SearchMemoryRequest {
   category?: string;
   limit?: number;
   score_threshold?: number;
-  filters?: Record<string, any>;
+  /** Filter by column, e.g. `{ plan: { in: ['pro'] } }`. The server validates columns (422 on a bad filter). */
+  filters?: Filters;
   retrieval_strategy?: RetrievalStrategy;
   distance_metric?: DistanceMetric;
   max_tokens?: number;

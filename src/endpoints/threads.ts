@@ -1,4 +1,5 @@
 import { ResponseMetadata } from './metadata.js';
+import { Filters } from '../filters.js';
 import { createErrorFromResponse } from '../errors.js';
 import {
   buildHeaders,
@@ -13,6 +14,8 @@ export interface ThreadsRequest {
   search?: string;
   offset?: number;
   limit?: number;
+  /** Filter threads by column, e.g. `{ plan: { in: ['pro'] } }`. Sent as a JSON `filters` query parameter (server limit 8192 characters). */
+  filters?: Filters;
 }
 
 export interface ThreadItem {
@@ -59,6 +62,9 @@ export async function threads(
       if (request?.limit !== undefined) {
         console.debug(`  Limit: ${request.limit}`);
       }
+      if (request?.filters && Object.keys(request.filters).length > 0) {
+        console.debug(`  Filters: ${JSON.stringify(request.filters)}`);
+      }
     }
 
     // Build query parameters
@@ -71,6 +77,10 @@ export async function threads(
     }
     if (request?.limit !== undefined) {
       params.append('limit', request.limit.toString());
+    }
+
+    if (request?.filters && Object.keys(request.filters).length > 0) {
+      params.append('filters', JSON.stringify(request.filters));
     }
 
     const queryString = params.toString();

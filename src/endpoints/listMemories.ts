@@ -1,4 +1,5 @@
 import { ResponseMetadata } from './metadata.js';
+import { Filters } from '../filters.js';
 import { createErrorFromResponse } from '../errors.js';
 import {
   buildHeaders,
@@ -16,6 +17,8 @@ export interface ListMemoriesRequest {
   limit?: number;
   /** Memories to skip, for paging. Use `next_offset` from the previous page. Needs 10xgraph-api with paging support. */
   offset?: number;
+  /** Filter by column, e.g. `{ plan: { in: ['pro'] } }`. The server validates columns (422 on a bad filter). */
+  filters?: Filters;
 }
 
 export interface ListMemoriesData {
@@ -53,6 +56,9 @@ export async function listMemories(
     };
     if (request.offset !== undefined) {
       body.offset = request.offset;
+    }
+    if (request.filters && Object.keys(request.filters).length > 0) {
+      body.filters = request.filters;
     }
 
     if (context.debug) {

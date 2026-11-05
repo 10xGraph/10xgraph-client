@@ -26,6 +26,24 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [Unreleased]
+
+### Added
+
+- Filter support. `threads()` takes `filters` (sent as a JSON `filters` query parameter);
+  `searchMemory()`, `listMemories()` and `forgetMemories()` take `filters` in the request body.
+  A filter is `{ column: value }` (equality) or `{ column: { op: value } }` with the operators
+  `eq`, `ne`, `in`, `nin`, `like`, `ilike`, `is_null`, `gt`, `gte`, `lt`, `lte`. New exported
+  types: `Filters`, `FilterCondition`, `FilterOperator`, `FilterScalar`. `listMemories()` gains
+  `filters`. The client does not validate columns; the server answers 422. Needs a `10xgraph-api`
+  with filter support.
+
+### Changed
+
+- `forgetMemories()` now throws a `TenxGraphError` subclass on a failed request (`ValidationError`
+  for 422, with the server message) instead of a plain `Error`. When the response has no JSON
+  error body the message is still `Forget memories failed: <status> <statusText>`.
+
 ## [1.0.0-rc.2] - 2026-10-30
 
 The second release candidate of `10xgraph-client` 1.0, aligned with `10xgraph` and `10xgraph-api`
