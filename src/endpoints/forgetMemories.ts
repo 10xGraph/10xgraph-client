@@ -1,4 +1,6 @@
 import { ResponseMetadata } from './metadata.js';
+import { Filters } from '../filters.js';
+import { createErrorFromResponse } from '../errors.js';
 import { MemoryType } from './storeMemory.js';
 import {
   buildHeaders,
@@ -14,7 +16,8 @@ export interface ForgetMemoriesRequest {
   options?: Record<string, any>;
   memory_type?: MemoryType;
   category?: string;
-  filters?: Record<string, any>;
+  /** Filter by column, e.g. `{ plan: { in: ['pro'] } }`. The server validates columns (422 on a bad filter). */
+  filters?: Filters;
 }
 
 export interface ForgetMemoriesData {
@@ -66,7 +69,12 @@ export async function forgetMemories(
   });
 
   if (!response.ok) {
-    throw new Error(`Forget memories failed: ${response.status} ${response.statusText}`);
+    throw await createErrorFromResponse(
+      response,
+      `Forget memories failed: ${response.status} ${response.statusText}`,
+      '/v1/store/memories/forget',
+      'POST'
+    );
   }
 
   const data: ForgetMemoriesResponse = await response.json();

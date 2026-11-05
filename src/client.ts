@@ -1,3 +1,4 @@
+import type { Filters } from './filters.js';
 import { ToolHandler, ToolRegistration, ToolExecutor } from './tools.js';
 import { Message } from './message.js';
 import { ping, PingContext, PingResponse } from './endpoints/ping.js';
@@ -190,6 +191,7 @@ function normalizeThreadsRequest(
       search: value.search,
       offset: value.offset,
       limit: value.limit,
+      filters: value.filters,
     };
   }
 
@@ -477,6 +479,16 @@ export class TenxGraphClient {
    * @param offset - Optional offset for pagination (default 0)
    * @param limit - Optional limit for pagination (default no limit)
    * @returns ThreadsResponse containing the list of threads and metadata
+   *
+   * @example
+   * ```ts
+   * const page = await client.threads({
+   *   limit: 20,
+   *   filters: { plan: { in: ['pro'] }, created_at: { gte: '2026-11-01T00:00:00Z' } },
+   * });
+   * ```
+   * `filters` is only available on the request-object form. The server answers 422 for an
+   * unknown column or a bad value.
    */
   async threads(): Promise<ThreadsResponse>;
   async threads(request: ThreadsRequest, options?: RequestOptions): Promise<ThreadsResponse>;
@@ -880,7 +892,8 @@ export class TenxGraphClient {
   /**
    * Search for memories in the agent's memory system
    *
-   * @param request - Memory search request parameters
+   * @param request - Memory search request parameters (`filters` takes `{ col: value }` or
+   *   `{ col: { op: value } }`)
    * @returns Promise<SearchMemoryResponse> containing matching memories
    *
    * @example
@@ -889,7 +902,8 @@ export class TenxGraphClient {
    *   query: "dark mode preferences",
    *   memory_type: MemoryType.SEMANTIC,
    *   limit: 5,
-   *   retrieval_strategy: RetrievalStrategy.SIMILARITY
+   *   retrieval_strategy: RetrievalStrategy.SIMILARITY,
+   *   filters: { plan: { in: ['pro'] }, created_at: { gte: '2026-11-01T00:00:00Z' } }
    * });
    * results.data.results.forEach(result => {
    *   console.log('Memory:', result.content, 'Score:', result.score);
@@ -1016,7 +1030,8 @@ export class TenxGraphClient {
    * ```ts
    * const result = await client.listMemories({
    *   limit: 50,
-   *   config: { include_vectors: false }
+   *   config: { include_vectors: false },
+   *   filters: { plan: { in: ['pro'] }, created_at: { gte: '2026-11-01T00:00:00Z' } }
    * });
    * console.log('Found memories:', result.data.memories.length);
    * result.data.memories.forEach(memory => {
@@ -1029,6 +1044,7 @@ export class TenxGraphClient {
     options?: Record<string, any>;
     limit?: number;
     offset?: number;
+    filters?: Filters;
     signal?: AbortSignal;
   }): Promise<ListMemoriesResponse> {
     const context = this.createContext<ListMemoriesContext>(options);
@@ -1038,6 +1054,7 @@ export class TenxGraphClient {
       options: options?.options,
       limit: options?.limit,
       offset: options?.offset,
+      filters: options?.filters,
     };
 
     return listMemoriesEndpoint(context, request);
@@ -1055,7 +1072,7 @@ export class TenxGraphClient {
    * const result = await client.forgetMemories({
    *   memory_type: MemoryType.EPISODIC,
    *   category: 'temporary',
-   *   filters: { tag: 'delete-me' }
+   *   filters: { tag: 'delete-me', created_at: { lt: '2026-01-01T00:00:00Z' } }
    * });
    * console.log('Forget success:', result.data.success);
    * ```
@@ -1065,7 +1082,7 @@ export class TenxGraphClient {
     options?: Record<string, any>;
     memory_type?: any;
     category?: string;
-    filters?: Record<string, any>;
+    filters?: Filters;
     signal?: AbortSignal;
   }): Promise<ForgetMemoriesResponse> {
     const context = this.createContext<ForgetMemoriesContext>(options);

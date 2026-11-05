@@ -1,6 +1,9 @@
 // Re-export tool-related types and classes
 export * from './tools.js';
 
+// Export filter types
+export * from './filters.js';
+
 // Re-export client functionality
 export * from './client.js';
 
