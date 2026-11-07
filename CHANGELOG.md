@@ -30,6 +30,13 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Background task methods for the `/v1/tasks` routes of `10xgraph-api`: `runTask(name, { args, kwargs })`,
+  `scheduleTask(name, { args, kwargs, schedule })`, `getTask(id)`, `rescheduleTask(scheduleId, schedule)`
+  and `cancelTask(id)`. `schedule` is exactly one of `{ cron }`, `{ at }` or `{ every }` (seconds); the
+  client does not validate it, the server answers 422. New exported types: `TaskStatus`, `TaskSchedule`,
+  `TaskRecord`, `ScheduleRecord`, `TaskCallOptions`, `RunTaskResponse`, `ScheduleTaskRequest`,
+  `ScheduleTaskResponse`, `GetTaskResponse`, `RescheduleTaskResponse`, `CancelTaskResponse`. Needs a
+  `10xgraph-api` with background tasks.
 - Filter support. `threads()` takes `filters` (sent as a JSON `filters` query parameter);
   `searchMemory()`, `listMemories()` and `forgetMemories()` take `filters` in the request body.
   A filter is `{ column: value }` (equality) or `{ column: { op: value } }` with the operators

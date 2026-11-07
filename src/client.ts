@@ -116,6 +116,22 @@ import {
   DeleteMemoryResponse,
 } from './endpoints/deleteMemory.js';
 import {
+  runTask as runTaskEndpoint,
+  scheduleTask as scheduleTaskEndpoint,
+  getTask as getTaskEndpoint,
+  rescheduleTask as rescheduleTaskEndpoint,
+  cancelTask as cancelTaskEndpoint,
+  TasksContext,
+  TaskCallOptions,
+  TaskSchedule,
+  ScheduleTaskRequest,
+  RunTaskResponse,
+  ScheduleTaskResponse,
+  GetTaskResponse,
+  RescheduleTaskResponse,
+  CancelTaskResponse,
+} from './endpoints/tasks.js';
+import {
   listMemories as listMemoriesEndpoint,
   ListMemoriesContext,
   ListMemoriesRequest,
@@ -1018,6 +1034,61 @@ export class TenxGraphClient {
     };
 
     return deleteMemoryEndpoint(context, request);
+  }
+
+  /**
+   * Run an `http=True` background task now. Returns the task id (HTTP 202).
+   *
+   * @example
+   * ```ts
+   * const { data } = await client.runTask('web_add', { kwargs: { a: 1, b: 2 } });
+   * const task = await client.getTask(data.task_id);
+   * ```
+   */
+  async runTask(
+    name: string,
+    options?: TaskCallOptions & { signal?: AbortSignal }
+  ): Promise<RunTaskResponse> {
+    const context = this.createContext<TasksContext>(options);
+    return runTaskEndpoint(context, name, { args: options?.args, kwargs: options?.kwargs });
+  }
+
+  /**
+   * Schedule an `http=True` task. `schedule` has exactly one of `cron`, `at` or `every`
+   * (seconds). Returns the schedule id. The server answers 501 when it has no Redis.
+   */
+  async scheduleTask(
+    name: string,
+    options: ScheduleTaskRequest & { signal?: AbortSignal }
+  ): Promise<ScheduleTaskResponse> {
+    const context = this.createContext<TasksContext>(options);
+    return scheduleTaskEndpoint(context, name, {
+      args: options.args,
+      kwargs: options.kwargs,
+      schedule: options.schedule,
+    });
+  }
+
+  /** Read a task (status, progress, result, error) or a schedule by its id. */
+  async getTask(id: string, options?: RequestOptions): Promise<GetTaskResponse> {
+    const context = this.createContext<TasksContext>(options);
+    return getTaskEndpoint(context, id);
+  }
+
+  /** Change the time of a schedule; its task and arguments stay. */
+  async rescheduleTask(
+    scheduleId: string,
+    schedule: TaskSchedule,
+    options?: RequestOptions
+  ): Promise<RescheduleTaskResponse> {
+    const context = this.createContext<TasksContext>(options);
+    return rescheduleTaskEndpoint(context, scheduleId, schedule);
+  }
+
+  /** Cancel a task, or delete a schedule. */
+  async cancelTask(id: string, options?: RequestOptions): Promise<CancelTaskResponse> {
+    const context = this.createContext<TasksContext>(options);
+    return cancelTaskEndpoint(context, id);
   }
 
   /**

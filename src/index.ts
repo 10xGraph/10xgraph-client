@@ -97,6 +97,9 @@ export * from './endpoints/updateMemory.js';
 // Export delete memory types
 export * from './endpoints/deleteMemory.js';
 
+// Export background task types
+export * from './endpoints/tasks.js';
+
 // Export list memories types
 export * from './endpoints/listMemories.js';
 
