@@ -2,6 +2,7 @@ import type { Filters } from './filters.js';
 import { ToolHandler, ToolRegistration, ToolExecutor } from './tools.js';
 import { Message } from './message.js';
 import { ping, PingContext, PingResponse } from './endpoints/ping.js';
+import { me as meEndpoint, MeContext, MeResponse } from './endpoints/me.js';
 import { graph, GraphContext, GraphResponse } from './endpoints/graph.js';
 import { graphTools, GraphToolsContext, GraphToolsResponse } from './endpoints/graphTools.js';
 import {
@@ -28,12 +29,6 @@ import {
   ThreadMessagesRequest,
   ThreadMessagesResponse,
 } from './endpoints/threadMessages.js';
-import {
-  addThreadMessages,
-  AddThreadMessagesContext,
-  AddThreadMessagesRequest,
-  AddThreadMessagesResponse,
-} from './endpoints/addThreadMessages.js';
 import {
   threadMessage,
   ThreadMessageContext,
@@ -328,6 +323,19 @@ export class TenxGraphClient {
   }
 
   /**
+   * Who the caller is and what they may do (`GET /v1/me`).
+   *
+   * `data` is either `{ user_id, tenant, roles, permissions, reach }` or, when the server
+   * runs with auth off, `{ auth: 'off' }`. Use `isAuthOff(data)` to tell them apart.
+   * A 401 means the token is missing or invalid.
+   */
+  async me(options?: RequestOptions): Promise<MeResponse> {
+    const context = this.createContext<MeContext>(options);
+
+    return meEndpoint(context);
+  }
+
+  /**
    * Fetch the agent graph
    */
   async graph(options?: RequestOptions): Promise<GraphResponse> {
@@ -555,37 +563,6 @@ export class TenxGraphClient {
     );
 
     return threadMessages(context, request);
-  }
-
-  /**
-   * Add messages to a specific thread checkpoint
-   *
-   * @deprecated Requires the `checkpointer:import` scope (admin only) in 10xgraph-api releases after 0.9.0.
-   * Use `updateThreadMessageFeedback` to attach feedback to a message.
-   *
-   * @param threadId - The ID of the thread to add messages to
-   * @param messages - Array of messages to add to the checkpoint
-   * @param config - Configuration map for the checkpoint
-   * @param metadata - Optional metadata for the checkpoint
-   * @returns AddCheckpointMessagesResponse containing the operation result
-   */
-  async addThreadMessages(
-    threadId: string | number,
-    messages: Message[],
-    config: Record<string, any> = {},
-    metadata?: Record<string, any>,
-    options?: RequestOptions
-  ): Promise<AddThreadMessagesResponse> {
-    const context = this.createContext<AddThreadMessagesContext>(options);
-
-    const request: AddThreadMessagesRequest = {
-      threadId,
-      config,
-      messages,
-      metadata,
-    };
-
-    return addThreadMessages(context, request);
   }
 
   /**

@@ -265,13 +265,3 @@ describe('G-140/G-152 (client.ts): shared serializer and recursion_limit 0', () 
     expect(body.messages[0].content[0].output).toEqual([]);
   });
 });
-
-describe('G-152: addThreadMessages serializes messages', () => {
-  it('sends message_id "0" instead of null', async () => {
-    fetchMock.mockResolvedValue(okJson());
-    const client = new TenxGraphClient({ baseUrl: 'http://h' });
-    await client.addThreadMessages('t', [Message.text_message('hi', 'user')]);
-    const body = JSON.parse(fetchMock.mock.calls[0][1].body);
-    expect(body.messages[0].message_id).toBe('0');
-  });
-});

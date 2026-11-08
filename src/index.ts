@@ -16,6 +16,9 @@ export * from './request.js';
 // Export ping Response types
 export * from './endpoints/ping.js';
 
+// Export me (caller identity) types
+export * from './endpoints/me.js';
+
 // Export graph Response types
 export * from './endpoints/graph.js';
 
@@ -49,7 +52,6 @@ export * from './endpoints/clearThreadState.js';
 export * from './endpoints/threadMessages.js';
 
 // Export add checkpoint messages Response types
-export * from './endpoints/addThreadMessages.js';
 
 // Export thread message Response types
 export * from './endpoints/threadMessage.js';
