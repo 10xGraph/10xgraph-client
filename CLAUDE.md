@@ -77,7 +77,7 @@ AG-UI clients) and `GET /v1/evals/runs[/{run_id}]` (dev-only playground view mod
   `realtime(init, options?)` (WebSocket audio-to-audio, transport-only; returns a `RealtimeSession`).
 - **Threads / checkpointer:** `threads()` / `threads(request)`, `threadDetails(id)`,
   `threadState(id)`, `updateThreadState(...)`, `clearThreadState(id)`, `threadMessages(...)`,
-  `addThreadMessages(...)` (deprecated, admin-only), `singleMessage(...)`,
+  `singleMessage(...)`,
   `updateThreadMessageFeedback(threadId, messageId, feedback)`, `deleteMessage(...)`, `deleteThread(...)`.
 - **Memory store:** `storeMemory`, `searchMemory`, `getMemory`, `updateMemory`, `deleteMemory`,
   `listMemories`.

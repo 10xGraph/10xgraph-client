@@ -30,6 +30,11 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- `me()` for `GET /v1/me` of `10xgraph-api`: who the caller is and what they may do. `data` is
+  `{ user_id, tenant, roles, permissions, reach }` (`reach` is `own`, `tenant` or `all`; `permissions` is
+  `['*']` for an unrestricted identity) or `{ auth: 'off' }` when the server runs without auth. New exported
+  types and helper: `MeResponse`, `MeData`, `MeIdentity`, `MeAuthOff`, `MeReach`, `isAuthOff`. Needs a
+  `10xgraph-api` with RBAC.
 - Background task methods for the `/v1/tasks` routes of `10xgraph-api`: `runTask(name, { args, kwargs })`,
   `scheduleTask(name, { args, kwargs, schedule })`, `getTask(id)`, `rescheduleTask(scheduleId, schedule)`
   and `cancelTask(id)`. `schedule` is exactly one of `{ cron }`, `{ at }` or `{ every }` (seconds); the
@@ -50,6 +55,10 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `forgetMemories()` now throws a `TenxGraphError` subclass on a failed request (`ValidationError`
   for 422, with the server message) instead of a plain `Error`. When the response has no JSON
   error body the message is still `Forget memories failed: <status> <statusText>`.
+
+### Removed
+
+- `addThreadMessages` and its `AddThreadMessages*` types. The `POST /v1/threads/{thread_id}/messages` route was removed from `10xgraph-api`, so the method had nothing to call. Send messages through `invoke` or `stream`, and use `updateThreadMessageFeedback` for feedback.
 
 ## [1.0.0-rc.2] - 2026-10-30
 
