@@ -294,6 +294,7 @@ describe('ToolExecutor Unit Tests', () => {
 
       const resultBlock = results[0].content[0] as ToolResultBlock;
       expect(resultBlock.call_id).toBe('call_123');
+      expect(resultBlock.name).toBe('get_weather');
       expect(resultBlock.output).toBe('Weather in NYC: Sunny, 72°F');
       expect(resultBlock.status).toBe('completed');
       expect(resultBlock.is_error).toBe(false);
@@ -344,6 +345,7 @@ describe('ToolExecutor Unit Tests', () => {
       expect(resultBlock.status).toBe('failed');
       expect(resultBlock.is_error).toBe(true);
       expect(resultBlock.output.error).toBe('Tool execution failed');
+      expect(resultBlock.name).toBe('failing_tool');
     });
 
     it('should handle non-Error exceptions', async () => {

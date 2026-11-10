@@ -194,17 +194,21 @@ export class RemoteToolCallBlock {
 export class ToolResultBlock {
   type: 'tool_result' = 'tool_result';
   call_id: string = '';
+  /** Name of the tool that produced the result. Absent on results saved before the server set it. */
+  name?: string;
   output: any;
   is_error: boolean = false;
   status?: 'completed' | 'failed';
 
   constructor(props: {
     call_id: string;
+    name?: string;
     output: any;
     status: 'completed' | 'failed';
     is_error: boolean;
   }) {
     this.call_id = props.call_id;
+    this.name = props.name;
     this.output = props.output;
     this.status = props.status;
     this.is_error = props.is_error;

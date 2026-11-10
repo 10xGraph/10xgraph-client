@@ -4,120 +4,189 @@
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.0+-blue.svg)](https://www.typescriptlang.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-The TypeScript client for the **10xGraph** API server. Build conversational AI applications with
-streaming responses, realtime audio, client-side tool execution, and dynamic state management.
+The typed TypeScript client for 10xGraph, infrastructure for AI applications. It talks to the
+`10xgraph-api` server from any frontend or Node app: invoke, stream, threads, memory, files,
+background tasks, remote tools and realtime audio.
 
-10xGraph by 10xScale: graph engineering for production AI agents.
+> 10xGraph is open-source, self-hosted infrastructure for AI applications. You write the agents, tools and tasks; 10xGraph runs them behind an API server with authentication, role-based access, tenant isolation, durable state in Postgres and Redis, background jobs, metrics and tracing, and generates Docker and Kubernetes deploy files. MIT licensed, by 10xScale. Formerly Agentflow.
 
-> **Coming from `@10xscale/agentflow-client`?** This is the same client under its new name.
-> Change the import and you are done; the old `AgentFlow*` names still work until 2.0. See
+> **Coming from `@10xscale/agentflow-client`?** This is the same client under its new name. Change
+> the import and you are done; the old `AgentFlow*` names still work until 2.0. See
 > [Migrating from `@10xscale/agentflow-client`](#migrating-from-10xscaleagentflow-client).
 
-## Features
-
-- **Simple API**: one client class with a method per server endpoint
-- **Streaming**: HTTP and WebSocket streaming for chat UIs
-- **Tool execution**: run browser-side tools locally, with recursion handling
-- **State management**: dynamic state schema with validation
-- **Realtime audio**: WebSocket audio-to-audio via `/v1/graph/live`
-- **TypeScript first**: full type definitions, dual ESM + CJS
-
-## Installation
+## Install
 
 ```bash
 npm install 10xgraph-client
-# or
-yarn add 10xgraph-client
-# or
-pnpm add 10xgraph-client
+# or: yarn add 10xgraph-client / pnpm add 10xgraph-client
 ```
 
-### Version compatibility
+Node 20 or newer. It uses the global `fetch`, ships ESM and CJS with types, and works with any
+frontend framework. There are no React hooks; call the client from your own state code.
 
-From 1.0, match `major.minor` across `10xgraph`, `10xgraph-api` and `10xgraph-client`; patch
-versions are independent (a patch is only a bug or security fix). Before 1.0, pick versions by
-this table:
+The client talks to a `10xgraph-api` server, so run one first. Match `major.minor` across
+`10xgraph`, `10xgraph-api` and `10xgraph-client` (patch versions are independent). WebSocket auth
+(`wsStream()` and `realtime()`) uses the `10xgraph-bearer` subprotocol, which needs `10xgraph-api`
+1.0. See [Run the server](https://10xgraph.com/docs/server/run-the-server).
 
-| `10xgraph-client` (npm)                | API server                                        | Core framework                 |
-| -------------------------------------- | ------------------------------------------------- | ------------------------------ |
-| 1.0.x                                  | `10xgraph-api` 1.0.x                              | `10xgraph` 1.0.x               |
-| 0.6.x                                  | `10xgraph-api` >= 0.7.0                           | `10xgraph` >= 0.10.0           |
-| `@10xscale/agentflow-client` 0.5.x     | `10xscale-agentflow-cli` >= 0.6.0, `10xgraph-api` | `10xscale-agentflow` >= 0.10.0 |
-| `@10xscale/agentflow-client` 0.3-0.4.x | `10xscale-agentflow-cli` >= 0.5.0                 | `10xscale-agentflow` >= 0.9.0  |
-
-The client tracks the **API server**, which is what it talks to. Client 0.6.x and later authenticate
-WebSockets with the `10xgraph-bearer` subprotocol, which `10xgraph-api` 0.7.0 introduced. Against
-an older `10xscale-agentflow-cli` server, HTTP endpoints still work, but `wsStream()` and
-`realtime()` with bearer auth do not; stay on `@10xscale/agentflow-client@0.5.0` until the server
-is upgraded.
-
-## Quick Start
-
-### Basic usage
+## Quickstart
 
 ```typescript
 import { TenxGraphClient, Message } from '10xgraph-client';
 
 const client = new TenxGraphClient({
   baseUrl: 'http://localhost:8000',
-  authToken: 'your-token', // optional bearer auth
-  debug: true, // optional
+  authToken: token, // a bearer token for the signed-in user
 });
 
-const result = await client.invoke([Message.text_message('Hello, how can you help me?', 'user')]);
-
+// Request and response. Remote tools run automatically during invoke.
+const result = await client.invoke(
+  [Message.text_message('Where is my order 1042?', 'user')],
+  { config: { thread_id: 'support-1042' } }
+);
 console.log(result.messages);
+
+// Server-sent events
+for await (const chunk of client.stream([Message.text_message('And the refund status?', 'user')], {
+  config: { thread_id: 'support-1042' },
+})) {
+  if (chunk.event === 'message') console.log(chunk.message?.content);
+}
 ```
 
-Start a local server with `10xgraph api` (from the `10xgraph-api` package).
+`stream()` returns an async generator of `StreamChunk`. `wsStream()` takes the same arguments and
+streams over a WebSocket. Both accept `initial_state`, `config`, `recursion_limit`, `on_busy`
+(`'wait' | 'cancel'`), `resume` with `interrupt_id`, `response_granularity` and `signal` (an
+`AbortSignal` that cancels the request). A 409 throws `ConflictError` and is not retried.
 
-### Authentication options
+To answer a human-in-the-loop interrupt, read it from a chunk and resume the thread:
+
+```typescript
+import { getInterrupt, approveInterrupt, rejectInterrupt } from '10xgraph-client';
+
+const interrupt = getInterrupt(chunk); // null when the chunk carries none
+if (interrupt) {
+  await client.invoke([], { config: { thread_id }, ...approveInterrupt(interrupt) });
+  // or ...rejectInterrupt(interrupt)
+}
+```
+
+## What the client covers
+
+| Area | Methods |
+| --- | --- |
+| Runs | `invoke`, `stream`, `wsStream`, `stopGraph` |
+| Identity and server | `ping`, `me`, `graph`, `graphTools`, `graphStateSchema`, `observability` |
+| Threads and messages | `threads`, `threadDetails`, `threadMessages`, `singleMessage`, `deleteMessage`, `updateThreadMessageFeedback`, `deleteThread` |
+| Thread state | `threadState`, `updateThreadState`, `clearThreadState` |
+| Memory store | `storeMemory`, `searchMemory`, `getMemory`, `updateMemory`, `deleteMemory`, `listMemories`, `forgetMemories` |
+| Files | `uploadFile`, `getFile`, `listFiles`, `getFileInfo`, `getFileAccessUrl`, `deleteFile`, `getMultimodalConfig` |
+| Background tasks | `runTask`, `scheduleTask`, `getTask`, `rescheduleTask`, `cancelTask` |
+| Remote tools | `registerTool`, `registerToolHandler` |
+| Realtime audio | `realtime` |
+
+Every method that does not return a stream accepts a per-call `options` argument with an
+`AbortSignal`. The full list with types is in the
+[`TenxGraphClient` reference](https://10xgraph.com/docs/reference/client/client).
+
+### Threads, memory and files
+
+```typescript
+const page = await client.threads({ limit: 20 });
+const messages = await client.threadMessages('support-1042', { limit: 50 });
+
+const upload = await client.uploadFile(file);
+const msg = Message.withFile('Summarize this document', upload.data.file_id, upload.data.mime_type);
+const accessUrl = await client.getFileAccessUrl(upload.data.file_id);
+```
+
+### Background tasks
+
+Tasks marked `http=True` on the server can be started and read from the client:
+
+```typescript
+const { data } = await client.runTask('web_add', { kwargs: { a: 1, b: 2 } });
+const task = await client.getTask(data.task_id);
+```
+
+`scheduleTask` takes a `schedule` with exactly one of `cron`, `at` or `every`; the server answers
+501 when it has no Redis. See [Background tasks](https://10xgraph.com/docs/server/background-tasks).
+
+## Authentication and secure frontends
 
 ```typescript
 import { TenxGraphClient, basicAuth, headerAuth } from '10xgraph-client';
 
-const bearerClient = new TenxGraphClient({
-  baseUrl: 'https://api.example.com',
-  authToken: process.env.TENXGRAPH_TOKEN,
-});
-
-const basicClient = new TenxGraphClient({
-  baseUrl: 'https://api.example.com',
-  auth: basicAuth('service-user', 'service-password'),
-});
-
-const apiKeyClient = new TenxGraphClient({
-  baseUrl: 'https://api.example.com',
-  auth: headerAuth('X-API-Key', process.env.TENXGRAPH_API_KEY!),
-});
-
-const sessionClient = new TenxGraphClient({
-  baseUrl: 'https://api.example.com',
-  credentials: 'include',
-});
+new TenxGraphClient({ baseUrl, authToken: token }); // bearer token
+new TenxGraphClient({ baseUrl, authToken: () => session.accessToken }); // called before each request
+new TenxGraphClient({ baseUrl, auth: basicAuth('service-user', 'service-password') });
+new TenxGraphClient({ baseUrl, auth: headerAuth('X-API-Key', apiKey) });
+new TenxGraphClient({ baseUrl, credentials: 'include' }); // cookie sessions
 ```
 
-### Streaming chat
+`setAuthToken(token)` swaps the token on a live client and `clearAuth()` removes it.
+
+- The server decides who the caller is and what they may read. The client only carries the
+  identity. Roles, tenant columns and ownership are enforced on the server.
+- Anything in a browser bundle is readable by the person using it, including `NEXT_PUBLIC_*`
+  variables. Never put a shared API key, a signing secret or a service credential in frontend code.
+  Use a server-side proxy that holds the secret, or give each signed-in user a short-lived token.
+- Browsers cannot set headers on a WebSocket. For `wsStream()` and `realtime()` the client sends
+  the token as the second entry of the `Sec-WebSocket-Protocol` list, after the `10xgraph-bearer`
+  sentinel (`WS_BEARER_SUBPROTOCOL`). The token never goes in the URL.
+- In Node versions without a global `WebSocket` (before 21), pass an implementation:
 
 ```typescript
-const stream = client.stream([Message.text_message('Tell me a story', 'user')]);
+import WebSocket from 'ws';
+const client = new TenxGraphClient({ baseUrl, authToken, webSocketImpl: WebSocket });
+```
 
-for await (const chunk of stream) {
-  if (chunk.event === 'message') {
-    console.log(chunk.message?.content);
-  }
+More in [Secure your frontend](https://10xgraph.com/docs/client/secure-your-frontend) and the
+[security model](https://10xgraph.com/docs/production/security-model).
+
+## Remote tools
+
+Remote tools run in the user's browser, for browser-only APIs such as `localStorage` or
+`navigator.geolocation`. Database queries, external API calls and calculations belong in tools on
+the server.
+
+```typescript
+// The matching schema must be declared in the server's 10xgraph.json.
+client.registerToolHandler('get_location', async () => {
+  const pos = await new Promise<GeolocationPosition>((resolve, reject) =>
+    navigator.geolocation.getCurrentPosition(resolve, reject)
+  );
+  return { lat: pos.coords.latitude, lon: pos.coords.longitude };
+});
+
+// The server asks for the tool during the run; the client runs it and sends the result back.
+const result = await client.invoke([Message.text_message('Find a store near me', 'user')]);
+```
+
+Model-facing metadata is declared on the server, never by an untrusted client:
+
+```json
+{
+  "remote_tools": [
+    {
+      "node": "assistant",
+      "name": "get_location",
+      "description": "Get the user's current coordinates",
+      "parameters": { "type": "object", "properties": {} }
+    }
+  ]
 }
 ```
 
-## Realtime audio (`/v1/graph/live`)
+No client setup call is required or available. See
+[Remote tools](https://10xgraph.com/docs/client/remote-tools).
 
-Transport-only: you stream PCM16 in and get PCM16 out. Mic capture and playback are yours to wire.
+## Realtime audio
 
-```ts
-import { TenxGraphClient } from '10xgraph-client';
+Transport only: you stream PCM16 in and get PCM16 out, and wire microphone capture and playback
+yourself.
 
-const client = new TenxGraphClient({ baseUrl: 'http://localhost:8000', authToken });
-
+```typescript
 const session = client.realtime(
   { model: 'gemini-3.8-live', modalities: 'AUDIO' },
   { reconnect: { maxAttempts: 5 } }
@@ -128,182 +197,47 @@ session.on('output_transcript', (e) => console.log(e.text));
 session.on('tool_call', (e) => console.log('tool', e.name, e.args));
 session.on('error', (e) => console.error(e.message));
 
-await session.ready; // socket open + init sent
+await session.ready; // socket open and init sent
 session.sendAudio(micChunk); // PCM16 @ 16 kHz (Uint8Array | ArrayBuffer)
 // push-to-talk: session.activityStart() / session.activityEnd()
 session.close(); // graceful end; disables reconnect
 ```
 
-Auth uses the browser-safe `10xgraph-bearer` subprotocol automatically. In Node < 21 (no global
-`WebSocket`), pass an implementation:
+The server honours `model` only when it lists it in `websocket.realtime_models`. See
+[Realtime audio](https://10xgraph.com/docs/client/realtime-audio).
 
-```ts
-import WebSocket from 'ws';
-const client = new TenxGraphClient({ baseUrl, authToken, webSocketImpl: WebSocket });
-```
+## Errors
 
-### File uploads and access URLs
+Every failure is a `TenxGraphError` or a subclass, so `instanceof` works:
 
 ```typescript
-const upload = await client.uploadFile(file);
+import { TenxGraphError, AuthenticationError, RateLimitError, ConflictError } from '10xgraph-client';
 
-// Best URL for rendering/downloading in the UI.
-// Cloud-backed deployments typically return a signed URL here.
-const accessUrl = upload.data.direct_url ?? upload.data.url;
-
-const fileInfo = await client.getFileInfo(upload.data.file_id);
-const fileUrl = await client.getFileAccessUrl(upload.data.file_id);
-
-const msg = Message.withFile('Summarize this document', upload.data.file_id, upload.data.mime_type);
-```
-
-### Tool registration
-
-**Important:** remote tools (registered client-side) should **only** be used for browser-level APIs
-like `localStorage` or `navigator.geolocation`. For most operations (database queries, external API
-calls, calculations), define your tools in the Python backend instead. See
-[Remote tools](https://10xgraph.com/docs/client/remote-tools) for details.
-
-```typescript
-// Matching trusted schema must be declared in the server's 10xgraph.json.
-client.registerToolHandler('get_weather', async ({ location }) => {
-  return { temperature: 72, conditions: 'sunny' };
-});
-
-// Tools execute automatically during invoke
-const result = await client.invoke([Message.text_message('What is the weather in NYC?', 'user')]);
-```
-
-Declare model-facing metadata in the server's `10xgraph.json`, never from an untrusted client:
-
-```json
-{
-  "remote_tools": [
-    {
-      "node": "assistant",
-      "name": "get_weather",
-      "description": "Get current weather for a location",
-      "parameters": {
-        "type": "object",
-        "properties": { "location": { "type": "string" } },
-        "required": ["location"]
-      }
-    }
-  ]
+try {
+  await client.invoke(messages);
+} catch (err) {
+  if (err instanceof RateLimitError) {
+    await sleep((err.retryAfterSeconds ?? 1) * 1000); // set when the server sends a hint
+  } else if (err instanceof AuthenticationError) {
+    // refresh the token
+  } else if (err instanceof TenxGraphError) {
+    console.error(err.statusCode, err.errorCode, err.requestId, err.message);
+  } else {
+    throw err;
+  }
 }
 ```
 
-No client setup call is required or available.
-
-## Documentation
-
-Full documentation lives at **[10xgraph.com/docs](https://10xgraph.com/docs/client)**.
-
-### Guides
-
-- **[Create a client](https://10xgraph.com/docs/client/create-client)**: setup and first request
-- **[Invoke an agent](https://10xgraph.com/docs/client/invoke-agent)**: request/response with tool execution
-- **[Stream responses](https://10xgraph.com/docs/client/stream-responses)**: real-time streaming
-- **[Remote tools](https://10xgraph.com/docs/client/remote-tools)**: when to use client-side tools
-- **[Realtime audio](https://10xgraph.com/docs/client/realtime-audio)**: the `/v1/graph/live` session
-- **[Error handling](https://10xgraph.com/docs/client/error-handling)**: error classes and recovery
-
-### Reference
-
-- **[`TenxGraphClient`](https://10xgraph.com/docs/reference/client/client)**: constructor config and every method
-- **[`Message` and content blocks](https://10xgraph.com/docs/reference/client/message)**
-- **[Auth](https://10xgraph.com/docs/reference/client/auth)** and **[Errors](https://10xgraph.com/docs/reference/client/errors)**
-- **[Troubleshooting](https://10xgraph.com/docs/troubleshooting/client)**: common issues and solutions
-
-## Key APIs
-
-### `invoke()`: batch processing
-
-Execute the agent with an automatic tool execution loop:
-
-```typescript
-const result = await client.invoke(messages, {
-  recursion_limit: 25,
-  response_granularity: 'full',
-});
-```
-
-Optional: `on_busy: 'wait' | 'cancel'` controls what happens when the thread already has an active
-run, and `resume` with `interrupt_id` answers an open interrupt. A 409 throws `ConflictError`
-(not retried automatically).
-
-### `stream()`: real-time streaming
-
-```typescript
-const stream = client.stream(messages);
-for await (const chunk of stream) {
-  // Process chunks in real-time
-}
-```
-
-### `graphStateSchema()`: dynamic schema
-
-Get the agent state schema for form generation and validation:
-
-```typescript
-const schema = await client.graphStateSchema();
-```
-
-### `graphTools()`: tool inventory
-
-List the tools the graph's tool nodes expose, grouped by node. Each tool is tagged with its
-source (`local`, `mcp`, or `remote`):
-
-```typescript
-const { data } = await client.graphTools();
-// data.nodes[].tools[] -> { name, description, source, parameters }
-```
-
-### `observability(threadId, runId?)`: run traces
-
-Fetch the reconstructed trace for a run (spans, events, and cost). Defaults to the thread's
-latest run:
-
-```typescript
-const trace = await client.observability(threadId);
-const specific = await client.observability(threadId, runId);
-```
-
-## Examples
-
-The [`examples/`](examples/) directory has complete working examples:
-
-- **[invoke-example.ts](examples/invoke-example.ts)**: basic invoke with tool execution
-- **[stream-example.ts](examples/stream-example.ts)**: streaming responses
-- **[state-schema-examples.ts](examples/state-schema-examples.ts)**: form generation and validation
-
-## Architecture
-
-```
-┌──────────────────────┐
-│   Your application   │
-└──────────┬───────────┘
-           │ TenxGraphClient
-           ▼
-┌──────────────────────┐
-│   10xgraph-client    │  <- this library
-│   client, tools,     │
-│   messages           │
-└──────────┬───────────┘
-           │ HTTP/HTTPS + WebSocket
-           ▼
-┌──────────────────────┐
-│   10xgraph-api       │  <- your backend
-│   (10xgraph api)     │
-└──────────────────────┘
-```
+Other subclasses include `PermissionError`, `NotFoundError`, `ValidationError`, `ServerError`,
+`RequestTimeoutError`, `NetworkError`, `WebSocketError` and `StreamError`. See
+[Error handling](https://10xgraph.com/docs/client/error-handling).
 
 ## Configuration
 
 ```typescript
 const client = new TenxGraphClient({
   baseUrl: string,           // Required: API base URL
-  authToken?: string,        // Optional: bearer token
+  authToken?: string | (() => string | null | undefined), // Optional: bearer token or getter
   auth?: TenxGraphAuth,      // Optional: bearer/basic/custom header auth
   headers?: HeadersInit,     // Optional: extra headers for every request
   credentials?: RequestCredentials, // Optional: cookie/session auth
@@ -312,6 +246,18 @@ const client = new TenxGraphClient({
   webSocketImpl?: typeof WebSocket  // Node < 21 (pass the 'ws' package)
 });
 ```
+
+## One stack, backend to frontend
+
+| Layer | Package | What it is |
+| --- | --- | --- |
+| Core | [`10xgraph`](https://github.com/10xGraph/10xGraph) (PyPI, import `tenxgraph`) | Graphs, agents, tools, state, storage |
+| Server | [`10xgraph-api`](https://github.com/10xGraph/10xgraph-api) (PyPI, command `10xgraph`) | API server, auth, jobs, deploy files |
+| Client | `10xgraph-client` (this package) | Typed TypeScript client |
+| Docs | [10xgraph.com/docs/client](https://10xgraph.com/docs/client) | Guides and reference |
+
+Start a local server with `10xgraph dev`. For a Next.js or React app see
+[Next.js and React](https://10xgraph.com/docs/client/nextjs-and-react).
 
 ## Migrating from `@10xscale/agentflow-client`
 
@@ -331,7 +277,7 @@ Steps:
 
 1. `npm uninstall @10xscale/agentflow-client && npm install 10xgraph-client`
 2. Replace `'@10xscale/agentflow-client'` with `'10xgraph-client'` in your imports.
-3. Upgrade the server to `10xgraph-api` >= 0.7.0 if you use `wsStream()` or `realtime()`.
+3. Upgrade the server to `10xgraph-api` 1.0 if you use `wsStream()` or `realtime()`.
 4. Optionally rename `AgentFlow*` identifiers to `TenxGraph*`. The old names are exported as
    deprecated aliases of the same classes and types, so `instanceof AgentFlowError` keeps working.
    They are removed in 2.0.
@@ -344,26 +290,24 @@ One observable difference: errors now report `error.name === 'TenxGraphError'` i
 Ships dual ESM + CJS with types. `import` resolves `dist/index.js` (ESM); `require` resolves
 `dist/index.cjs`. Tree-shakeable (`"sideEffects": false`).
 
+## TypeScript support
+
+```typescript
+import type {
+  TenxGraphConfig,
+  ToolRegistration,
+  InvokeResult,
+  StreamChunk,
+  AgentState,
+} from '10xgraph-client';
+```
+
 ## Testing
 
 ```bash
 npm test          # watch mode
 npm run test:run  # run once
 npm run build     # build the library
-```
-
-## TypeScript support
-
-```typescript
-import type {
-  TenxGraphClient,
-  Message,
-  ToolRegistration,
-  InvokeResult,
-  StreamChunk,
-  AgentState,
-  AgentStateSchema,
-} from '10xgraph-client';
 ```
 
 ## Contributing

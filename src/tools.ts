@@ -237,10 +237,11 @@ export class ToolExecutor {
     const results: Message[] = [];
 
     const seenCallIds = new Set<string>();
-    const failed = (callId: string, error: string): Message =>
+    const failed = (callId: string, name: string, error: string): Message =>
       Message.tool_message([
         new ToolResultBlock({
           call_id: callId,
+          name,
           output: { error },
           status: 'failed',
           is_error: true,
@@ -252,7 +253,7 @@ export class ToolExecutor {
       const toolName = call.name;
 
       if (call.id && seenCallIds.has(call.id)) {
-        results.push(failed(call.id, `Duplicate tool call id '${call.id}' rejected`));
+        results.push(failed(call.id, toolName, `Duplicate tool call id '${call.id}' rejected`));
         continue;
       }
       if (call.id) seenCallIds.add(call.id);
@@ -264,16 +265,20 @@ export class ToolExecutor {
           const maxBytes = tool.maxArgsBytes ?? DEFAULT_MAX_TOOL_ARGS_BYTES;
           const size = JSON.stringify(call.args ?? null)?.length ?? 0;
           if (size > maxBytes) {
-            results.push(failed(call.id, `Arguments for '${toolName}' exceed ${maxBytes} bytes`));
+            results.push(
+              failed(call.id, toolName, `Arguments for '${toolName}' exceed ${maxBytes} bytes`)
+            );
             continue;
           }
           const invalid = checkToolArguments(call.args ?? {}, tool.parameters);
           if (invalid) {
-            results.push(failed(call.id, `Invalid arguments for '${toolName}': ${invalid}`));
+            results.push(
+              failed(call.id, toolName, `Invalid arguments for '${toolName}': ${invalid}`)
+            );
             continue;
           }
           if (tool.validate && (await tool.validate(call.args)) === false) {
-            results.push(failed(call.id, `Arguments for '${toolName}' were rejected`));
+            results.push(failed(call.id, toolName, `Arguments for '${toolName}' were rejected`));
             continue;
           }
 
@@ -283,6 +288,7 @@ export class ToolExecutor {
           // Create a tool result message
           const toolResultBlock = new ToolResultBlock({
             call_id: call.id,
+            name: toolName,
             output: result,
             status: 'completed',
             is_error: false,
@@ -295,6 +301,7 @@ export class ToolExecutor {
 
           const toolResultBlock = new ToolResultBlock({
             call_id: call.id,
+            name: toolName,
             output: { error: errorMessage },
             status: 'failed',
             is_error: true,
@@ -306,6 +313,7 @@ export class ToolExecutor {
         // Tool not found error
         const toolResultBlock = new ToolResultBlock({
           call_id: call.id,
+          name: toolName,
           output: { error: `Tool '${toolName}' not found` },
           status: 'failed',
           is_error: true,
