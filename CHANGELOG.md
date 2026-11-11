@@ -26,10 +26,15 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
-## [Unreleased]
+## [1.0.0-rc.3] - 2026-11-11
+
+The third release candidate of `10xgraph-client` 1.0. Use it with `10xgraph-api` 1.0.0rc6. New
+response fields are typed optional, so the client still works against older servers; a
+`ToolResultBlock.name` sent to an older server is ignored there.
 
 ### Added
 
+- `ToolResultBlock.name?: string`: the name of the tool that produced the result. The server sets it on results from `10xgraph` 1.0.0rc6 or later; older results have none. Results the client builds for client-side tools (`ToolExecutor`: success, thrown error, unknown tool, rejected arguments, duplicate call id) set it too.
 - `me()` for `GET /v1/me` of `10xgraph-api`: who the caller is and what they may do. `data` is
   `{ user_id, tenant, roles, permissions, reach }` (`reach` is `own`, `tenant` or `all`; `permissions` is
   `['*']` for an unrestricted identity) or `{ auth: 'off' }` when the server runs without auth. New exported

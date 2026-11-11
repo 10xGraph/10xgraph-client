@@ -5,6 +5,28 @@ Human-facing notes for the current release. For the full history see
 
 ---
 
+## 1.0.0-rc.3: third release candidate for 1.0
+
+Third release candidate, published to npm under the `next` dist-tag:
+
+```bash
+npm install 10xgraph-client@next
+```
+
+Use it with `10xgraph-api` 1.0.0rc6. It is `1.0.0-rc.2` below plus the changes here.
+
+### Before you upgrade
+
+- **`addThreadMessages` is removed.** The server route is gone. Send messages through `invoke` or `stream`, and use `updateThreadMessageFeedback` for feedback.
+- **`forgetMemories()` throws typed errors** (`ValidationError` for 422) instead of a plain `Error`.
+
+### What changed in rc.3
+
+- **`me()`** for `GET /v1/me`: who the caller is and what they may do (`user_id`, `tenant`, `roles`, `permissions`, `reach`), or `{ auth: 'off' }`.
+- **Background tasks:** `runTask`, `scheduleTask`, `getTask`, `rescheduleTask` and `cancelTask` for the `/v1/tasks` routes.
+- **Filters** on `threads()`, `searchMemory()`, `listMemories()` and `forgetMemories()`.
+- **`ToolResultBlock.name`:** the tool that produced the result, set by the server from `10xgraph` 1.0.0rc6 and by the client on results of client-side tools.
+
 ## 1.0.0-rc.2: second release candidate for 1.0
 
 Second release candidate, published to npm under the `next` dist-tag:
