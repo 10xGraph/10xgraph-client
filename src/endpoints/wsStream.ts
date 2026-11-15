@@ -1,4 +1,4 @@
-import { Message } from '../message.js';
+import { Message, hydrateChunk } from '../message.js';
 import { ToolExecutor } from '../tools.js';
 import { RequestContext } from '../request.js';
 import { buildWsUrl, openWebSocket } from '../ws.js';
@@ -136,7 +136,7 @@ export async function* wsStreamInvoke(
 
   ws.addEventListener('message', (event: MessageEvent) => {
     try {
-      const chunk = JSON.parse(event.data as string) as StreamChunk;
+      const chunk = hydrateChunk(JSON.parse(event.data as string)) as StreamChunk;
       enqueue(chunk);
     } catch (e) {
       // A frame that is not JSON means the stream is corrupt; do not skip it silently.

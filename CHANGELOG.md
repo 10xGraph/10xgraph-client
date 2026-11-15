@@ -26,10 +26,16 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
-## [Unreleased]
+## [1.0.0] - 2026-11-16
+
+The first stable release of `10xgraph-client`. Use it with `10xgraph-api` 1.0 (same `major.minor`).
+The public API, everything exported from `src/index.ts` and the package entry points, is stable
+until 2.0, and the deprecated `AgentFlow*` aliases in `src/compat.ts` keep working until 2.0.
+This section lists the changes since 1.0.0-rc.3.
 
 ### Fixed
 
+- Messages the server returns are now real `Message` instances, as the types always said, so `result.messages.at(-1)?.text()` works instead of throwing "text is not a function". Covers `invoke` (`messages`, `all_messages`, `context`, `state.context`, partial results), `stream` and WebSocket stream chunks (`chunk.message`, `chunk.state.context`), `threadMessages`, `singleMessage`, `threadState` and `updateThreadState` (`state.context`). Every field the server sent is kept, unknown ones included; content blocks stay plain objects. New exports: `hydrateMessage`, `hydrateStateContext`, `hydrateChunk`.
 - Typed HTTP errors keep the server's error code. `BadRequestError`, `AuthenticationError`, `PermissionError`, `NotFoundError`, `ConflictError`, `ValidationError` and `RateLimitError` take an optional trailing `errorCode` and `errorCode` now carries what the server sent (`EXPIRED_TOKEN`, `INVALID_TOKEN`, `REVOKED_TOKEN`, `THREAD_NOT_FOUND`, ...), so an app can refresh on an expired token and log out on a revoked one. When the body has no code, the class default (`AUTHENTICATION_FAILED`, `RESOURCE_NOT_FOUND`, ...) is used as before.
 
 ## [1.0.0-rc.3] - 2026-11-11

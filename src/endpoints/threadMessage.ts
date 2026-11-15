@@ -1,5 +1,5 @@
 import { ResponseMetadata } from './metadata.js';
-import { Message } from '../message.js';
+import { Message, hydrateMessage } from '../message.js';
 import { createErrorFromResponse } from '../errors.js';
 import {
   buildHeaders,
@@ -61,6 +61,7 @@ export async function threadMessage(
     }
 
     const data: ThreadMessageResponse = await response.json();
+    if (data?.data) data.data = hydrateMessage(data.data) as ThreadMessageData;
 
     if (context.debug) {
       console.info('TenxGraphClient: Thread message fetched successfully', data);

@@ -7,8 +7,8 @@
 | `1.0.x` | Yes       |
 | `< 1.0` | No        |
 
-`10xgraph-client` is at 1.0 (release candidate `1.0.0-rc.3`). Only the latest
-minor release receives security fixes; there are no long-term support branches yet.
+`10xgraph-client` is at 1.0. Only the latest 1.x minor release receives security fixes;
+there are no long-term support branches yet. The 1.0 release candidates no longer receive fixes.
 
 ## Reporting a vulnerability
 

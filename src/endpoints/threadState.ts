@@ -1,5 +1,6 @@
 import { ResponseMetadata } from './metadata.js';
 import { AgentState } from '../agent.js';
+import { hydrateStateContext } from '../message.js';
 import { createErrorFromResponse } from '../errors.js';
 import {
   buildHeaders,
@@ -54,6 +55,7 @@ export async function threadState(
     }
 
     const data: ThreadStateResponse = await response.json();
+    hydrateStateContext(data?.data?.state);
 
     if (context.debug) {
       console.info(

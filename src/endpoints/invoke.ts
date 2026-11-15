@@ -1,4 +1,4 @@
-import { Message } from '../message.js';
+import { Message, hydrateMessage, hydrateStateContext } from '../message.js';
 import { AgentState } from '../agent.js';
 import { ToolExecutor } from '../tools.js';
 import {
@@ -149,6 +149,9 @@ async function makeSingleInvokeCall(
     if (!Array.isArray(data.data.messages)) {
       data.data.messages = [];
     }
+    data.data.messages = data.data.messages.map(hydrateMessage);
+    if (Array.isArray(data.data.context)) data.data.context = data.data.context.map(hydrateMessage);
+    hydrateStateContext(data.data.state);
     return data;
   } catch (error) {
     if ((error as Error).name === 'AbortError') {

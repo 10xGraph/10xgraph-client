@@ -1,4 +1,4 @@
-import { Message } from '../message.js';
+import { Message, hydrateChunk } from '../message.js';
 import { AgentState } from '../agent.js';
 import { ToolExecutor } from '../tools.js';
 import {
@@ -167,7 +167,7 @@ function* processBuffer(
 
     if (line) {
       try {
-        const chunk = JSON.parse(line) as StreamChunk;
+        const chunk = hydrateChunk(JSON.parse(line)) as StreamChunk;
         if (debug) {
           console.debug('TenxGraphClient: Stream chunk received (NDJSON):', chunk.event);
         }
@@ -183,7 +183,7 @@ function* processBuffer(
     const extracted = extractFirstJSON(buffer);
     if (extracted) {
       try {
-        const chunk = JSON.parse(extracted.json) as StreamChunk;
+        const chunk = hydrateChunk(JSON.parse(extracted.json)) as StreamChunk;
         if (debug) {
           console.debug('TenxGraphClient: Stream chunk received (concat):', chunk.event);
         }
@@ -197,7 +197,7 @@ function* processBuffer(
       if (isFinal && buffer.trim()) {
         // On final read, try to parse what's left
         try {
-          const chunk = JSON.parse(buffer.trim()) as StreamChunk;
+          const chunk = hydrateChunk(JSON.parse(buffer.trim())) as StreamChunk;
           if (debug) {
             console.debug('TenxGraphClient: Final stream chunk:', chunk.event);
           }
