@@ -3,6 +3,7 @@
 [![npm version](https://img.shields.io/npm/v/10xgraph-client.svg)](https://www.npmjs.com/package/10xgraph-client)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.0+-blue.svg)](https://www.typescriptlang.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Star on GitHub](https://img.shields.io/badge/GitHub-Star-181717?logo=github)](https://github.com/10xGraph/10xGraph)
 
 The typed TypeScript client for 10xGraph, infrastructure for AI applications. It talks to the
 `10xgraph-api` server from any frontend or Node app: invoke, stream, threads, memory, files,
@@ -70,6 +71,8 @@ if (interrupt) {
   // or ...rejectInterrupt(interrupt)
 }
 ```
+
+If this saved you time, star [10xGraph on GitHub](https://github.com/10xGraph/10xGraph). It helps other developers find it.
 
 ## What the client covers
 
