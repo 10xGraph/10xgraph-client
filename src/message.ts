@@ -438,3 +438,32 @@ export class Message {
     return new Message(role, blocks);
   }
 }
+
+/**
+ * Turn a message object from the server (parsed JSON) into a `Message` instance.
+ * Every field the server sent is kept, unknown ones included; content blocks stay plain
+ * objects. A value that is already a `Message`, or is not an object, is returned as is.
+ */
+export function hydrateMessage(raw: any): Message {
+  if (raw instanceof Message || raw === null || typeof raw !== 'object') return raw;
+  return Object.assign(new Message(raw.role, raw.content ?? [], raw.message_id ?? null), raw);
+}
+
+/** Hydrate `state.context` in place when the server sent one. Returns the same state. */
+export function hydrateStateContext<T>(state: T): T {
+  const s = state as any;
+  if (s && typeof s === 'object' && Array.isArray(s.context)) {
+    s.context = s.context.map(hydrateMessage);
+  }
+  return state;
+}
+
+/** Hydrate the messages (and state context) of a stream chunk in place. */
+export function hydrateChunk<T>(chunk: T): T {
+  const c = chunk as any;
+  if (c && typeof c === 'object') {
+    if (c.message) c.message = hydrateMessage(c.message);
+    if (c.state) hydrateStateContext(c.state);
+  }
+  return chunk;
+}
