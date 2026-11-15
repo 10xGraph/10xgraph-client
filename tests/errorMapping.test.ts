@@ -1,6 +1,10 @@
 import { describe, it, expect } from 'vitest';
 import {
+  AuthenticationError,
+  BadRequestError,
   ConflictError,
+  NotFoundError,
+  PermissionError,
   GraphRecursionError,
   RateLimitError,
   RequestTimeoutError,
@@ -152,5 +156,41 @@ describe('transport error classes (G-150)', () => {
     expect(new RequestTimeoutError(50).message).toBe('Request timeout after 50ms');
     expect(new WebSocketError('closed', 1012).closeCode).toBe(1012);
     expect(new StreamError('bad chunk').errorCode).toBe('STREAM_ERROR');
+  });
+});
+
+describe('createErrorFromResponse: server error code is kept (D-21)', () => {
+  it.each([
+    [401, 'EXPIRED_TOKEN', AuthenticationError],
+    [401, 'REVOKED_TOKEN', AuthenticationError],
+    [403, 'PERMISSION_DENIED', PermissionError],
+    [404, 'THREAD_NOT_FOUND', NotFoundError],
+    [422, 'REQUEST_INVALID', ValidationError],
+    [409, 'THREAD_BUSY', ConflictError],
+    [400, 'MALFORMED_BODY', BadRequestError],
+    [429, 'TOO_MANY', RateLimitError],
+  ])('%i %s keeps its code', async (status, code, cls) => {
+    const err = await createErrorFromResponse(jsonResponse(status, envelope(code)));
+    expect(err).toBeInstanceOf(cls);
+    expect(err.errorCode).toBe(code);
+    expect(err.statusCode).toBe(status);
+  });
+
+  it.each([
+    [400, 'BAD_REQUEST'],
+    [401, 'AUTHENTICATION_FAILED'],
+    [403, 'PERMISSION_ERROR'],
+    [404, 'RESOURCE_NOT_FOUND'],
+    [409, 'CONFLICT'],
+    [422, 'VALIDATION_ERROR'],
+    [429, 'RATE_LIMIT_EXCEEDED'],
+  ])('%i without a code falls back to %s', async (status, fallback) => {
+    const err = await createErrorFromResponse(jsonResponse(status, envelope('')));
+    expect(err.errorCode).toBe(fallback);
+  });
+
+  it('still routes special codes to their classes', async () => {
+    const err = await createErrorFromResponse(jsonResponse(500, envelope('STORAGE_000')));
+    expect(err).toBeInstanceOf(StorageError);
   });
 });

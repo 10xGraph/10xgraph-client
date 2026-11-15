@@ -30,6 +30,11 @@ export interface ApiErrorResponse {
  */
 export class TenxGraphError extends Error {
   public readonly statusCode: number;
+  /**
+   * The server's error code when the response carried one (for example INVALID_TOKEN,
+   * EXPIRED_TOKEN, REVOKED_TOKEN, THREAD_NOT_FOUND). Typed subclasses fall back to their own
+   * default code (such as AUTHENTICATION_FAILED) when the body has none.
+   */
   public readonly errorCode: string;
   public readonly requestId: string;
   public readonly timestamp: string;
@@ -117,8 +122,14 @@ export class TenxGraphError extends Error {
  * Thrown when the request is malformed or contains invalid data
  */
 export class BadRequestError extends TenxGraphError {
-  constructor(message: string, requestId: string, timestamp: string, details: ErrorDetail[] = []) {
-    super(message, 400, 'BAD_REQUEST', requestId, timestamp, details);
+  constructor(
+    message: string,
+    requestId: string,
+    timestamp: string,
+    details: ErrorDetail[] = [],
+    errorCode?: string
+  ) {
+    super(message, 400, errorCode || 'BAD_REQUEST', requestId, timestamp, details);
     this.name = 'BadRequestError';
   }
 }
@@ -128,8 +139,14 @@ export class BadRequestError extends TenxGraphError {
  * Thrown when authentication credentials are missing or invalid
  */
 export class AuthenticationError extends TenxGraphError {
-  constructor(message: string, requestId: string, timestamp: string, details: ErrorDetail[] = []) {
-    super(message, 401, 'AUTHENTICATION_FAILED', requestId, timestamp, details);
+  constructor(
+    message: string,
+    requestId: string,
+    timestamp: string,
+    details: ErrorDetail[] = [],
+    errorCode?: string
+  ) {
+    super(message, 401, errorCode || 'AUTHENTICATION_FAILED', requestId, timestamp, details);
     this.name = 'AuthenticationError';
   }
 }
@@ -139,8 +156,14 @@ export class AuthenticationError extends TenxGraphError {
  * Thrown when the user doesn't have permission to access the resource
  */
 export class PermissionError extends TenxGraphError {
-  constructor(message: string, requestId: string, timestamp: string, details: ErrorDetail[] = []) {
-    super(message, 403, 'PERMISSION_ERROR', requestId, timestamp, details);
+  constructor(
+    message: string,
+    requestId: string,
+    timestamp: string,
+    details: ErrorDetail[] = [],
+    errorCode?: string
+  ) {
+    super(message, 403, errorCode || 'PERMISSION_ERROR', requestId, timestamp, details);
     this.name = 'PermissionError';
   }
 }
@@ -150,8 +173,14 @@ export class PermissionError extends TenxGraphError {
  * Thrown when the requested resource doesn't exist
  */
 export class NotFoundError extends TenxGraphError {
-  constructor(message: string, requestId: string, timestamp: string, details: ErrorDetail[] = []) {
-    super(message, 404, 'RESOURCE_NOT_FOUND', requestId, timestamp, details);
+  constructor(
+    message: string,
+    requestId: string,
+    timestamp: string,
+    details: ErrorDetail[] = [],
+    errorCode?: string
+  ) {
+    super(message, 404, errorCode || 'RESOURCE_NOT_FOUND', requestId, timestamp, details);
     this.name = 'NotFoundError';
   }
 }
@@ -162,8 +191,14 @@ export class NotFoundError extends TenxGraphError {
  * `interrupt_id` does not match the open interrupt. Never retried automatically.
  */
 export class ConflictError extends TenxGraphError {
-  constructor(message: string, requestId: string, timestamp: string, details: ErrorDetail[] = []) {
-    super(message, 409, 'CONFLICT', requestId, timestamp, details);
+  constructor(
+    message: string,
+    requestId: string,
+    timestamp: string,
+    details: ErrorDetail[] = [],
+    errorCode?: string
+  ) {
+    super(message, 409, errorCode || 'CONFLICT', requestId, timestamp, details);
     this.name = 'ConflictError';
   }
 }
@@ -173,8 +208,14 @@ export class ConflictError extends TenxGraphError {
  * Thrown when the request data fails validation
  */
 export class ValidationError extends TenxGraphError {
-  constructor(message: string, requestId: string, timestamp: string, details: ErrorDetail[] = []) {
-    super(message, 422, 'VALIDATION_ERROR', requestId, timestamp, details);
+  constructor(
+    message: string,
+    requestId: string,
+    timestamp: string,
+    details: ErrorDetail[] = [],
+    errorCode?: string
+  ) {
+    super(message, 422, errorCode || 'VALIDATION_ERROR', requestId, timestamp, details);
     this.name = 'ValidationError';
   }
 }
@@ -449,12 +490,13 @@ export class RateLimitError extends TenxGraphError {
     requestId: string,
     timestamp: string,
     details: ErrorDetail[] = [],
-    retryAfterSeconds?: number
+    retryAfterSeconds?: number,
+    errorCode?: string
   ) {
     super(
       message,
       429,
-      'RATE_LIMIT_EXCEEDED',
+      errorCode || 'RATE_LIMIT_EXCEEDED',
       requestId,
       timestamp,
       details,
@@ -746,24 +788,31 @@ function buildError(
 
   // VALIDATION_ERROR (and the older AGENTFLOW_VALIDATION_ERROR spelling) are validation errors
   if (errorCode === 'VALIDATION_ERROR' || errorCode === 'AGENTFLOW_VALIDATION_ERROR') {
-    return new ValidationError(message, requestId, timestamp, details);
+    return new ValidationError(message, requestId, timestamp, details, errorCode);
   }
 
   switch (status) {
     case 400:
-      return new BadRequestError(message, requestId, timestamp, details);
+      return new BadRequestError(message, requestId, timestamp, details, errorCode);
     case 401:
-      return new AuthenticationError(message, requestId, timestamp, details);
+      return new AuthenticationError(message, requestId, timestamp, details, errorCode);
     case 403:
-      return new PermissionError(message, requestId, timestamp, details);
+      return new PermissionError(message, requestId, timestamp, details, errorCode);
     case 404:
-      return new NotFoundError(message, requestId, timestamp, details);
+      return new NotFoundError(message, requestId, timestamp, details, errorCode);
     case 409:
-      return new ConflictError(message, requestId, timestamp, details);
+      return new ConflictError(message, requestId, timestamp, details, errorCode);
     case 422:
-      return new ValidationError(message, requestId, timestamp, details);
+      return new ValidationError(message, requestId, timestamp, details, errorCode);
     case 429:
-      return new RateLimitError(message, requestId, timestamp, details, extra.retryAfter);
+      return new RateLimitError(
+        message,
+        requestId,
+        timestamp,
+        details,
+        extra.retryAfter,
+        errorCode
+      );
     case 500:
     case 502:
     case 503:

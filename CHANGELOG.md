@@ -26,6 +26,12 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [Unreleased]
+
+### Fixed
+
+- Typed HTTP errors keep the server's error code. `BadRequestError`, `AuthenticationError`, `PermissionError`, `NotFoundError`, `ConflictError`, `ValidationError` and `RateLimitError` take an optional trailing `errorCode` and `errorCode` now carries what the server sent (`EXPIRED_TOKEN`, `INVALID_TOKEN`, `REVOKED_TOKEN`, `THREAD_NOT_FOUND`, ...), so an app can refresh on an expired token and log out on a revoked one. When the body has no code, the class default (`AUTHENTICATION_FAILED`, `RESOURCE_NOT_FOUND`, ...) is used as before.
+
 ## [1.0.0-rc.3] - 2026-11-11
 
 The third release candidate of `10xgraph-client` 1.0. Use it with `10xgraph-api` 1.0.0rc6. New

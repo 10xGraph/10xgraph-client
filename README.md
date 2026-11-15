@@ -222,7 +222,7 @@ try {
   if (err instanceof RateLimitError) {
     await sleep((err.retryAfterSeconds ?? 1) * 1000); // set when the server sends a hint
   } else if (err instanceof AuthenticationError) {
-    // refresh the token
+    // err.errorCode is the server's code: EXPIRED_TOKEN (refresh) vs INVALID_TOKEN / REVOKED_TOKEN (log out)
   } else if (err instanceof TenxGraphError) {
     console.error(err.statusCode, err.errorCode, err.requestId, err.message);
   } else {
