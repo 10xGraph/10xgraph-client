@@ -41,10 +41,9 @@ const client = new TenxGraphClient({
 });
 
 // Request and response. Remote tools run automatically during invoke.
-const result = await client.invoke(
-  [Message.text_message('Where is my order 1042?', 'user')],
-  { config: { thread_id: 'support-1042' } }
-);
+const result = await client.invoke([Message.text_message('Where is my order 1042?', 'user')], {
+  config: { thread_id: 'support-1042' },
+});
 console.log(result.messages);
 
 // Server-sent events
@@ -76,17 +75,17 @@ If this saved you time, star [10xGraph on GitHub](https://github.com/10xGraph/10
 
 ## What the client covers
 
-| Area | Methods |
-| --- | --- |
-| Runs | `invoke`, `stream`, `wsStream`, `stopGraph` |
-| Identity and server | `ping`, `me`, `graph`, `graphTools`, `graphStateSchema`, `observability` |
+| Area                 | Methods                                                                                                                       |
+| -------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| Runs                 | `invoke`, `stream`, `wsStream`, `stopGraph`                                                                                   |
+| Identity and server  | `ping`, `me`, `graph`, `graphTools`, `graphStateSchema`, `observability`                                                      |
 | Threads and messages | `threads`, `threadDetails`, `threadMessages`, `singleMessage`, `deleteMessage`, `updateThreadMessageFeedback`, `deleteThread` |
-| Thread state | `threadState`, `updateThreadState`, `clearThreadState` |
-| Memory store | `storeMemory`, `searchMemory`, `getMemory`, `updateMemory`, `deleteMemory`, `listMemories`, `forgetMemories` |
-| Files | `uploadFile`, `getFile`, `listFiles`, `getFileInfo`, `getFileAccessUrl`, `deleteFile`, `getMultimodalConfig` |
-| Background tasks | `runTask`, `scheduleTask`, `getTask`, `rescheduleTask`, `cancelTask` |
-| Remote tools | `registerTool`, `registerToolHandler` |
-| Realtime audio | `realtime` |
+| Thread state         | `threadState`, `updateThreadState`, `clearThreadState`                                                                        |
+| Memory store         | `storeMemory`, `searchMemory`, `getMemory`, `updateMemory`, `deleteMemory`, `listMemories`, `forgetMemories`                  |
+| Files                | `uploadFile`, `getFile`, `listFiles`, `getFileInfo`, `getFileAccessUrl`, `deleteFile`, `getMultimodalConfig`                  |
+| Background tasks     | `runTask`, `scheduleTask`, `getTask`, `rescheduleTask`, `cancelTask`                                                          |
+| Remote tools         | `registerTool`, `registerToolHandler`                                                                                         |
+| Realtime audio       | `realtime`                                                                                                                    |
 
 Every method that does not return a stream accepts a per-call `options` argument with an
 `AbortSignal`. The full list with types is in the
@@ -214,7 +213,12 @@ The server honours `model` only when it lists it in `websocket.realtime_models`.
 Every failure is a `TenxGraphError` or a subclass, so `instanceof` works:
 
 ```typescript
-import { TenxGraphError, AuthenticationError, RateLimitError, ConflictError } from '10xgraph-client';
+import {
+  TenxGraphError,
+  AuthenticationError,
+  RateLimitError,
+  ConflictError,
+} from '10xgraph-client';
 
 try {
   await client.invoke(messages);
@@ -252,12 +256,12 @@ const client = new TenxGraphClient({
 
 ## One stack, backend to frontend
 
-| Layer | Package | What it is |
-| --- | --- | --- |
-| Core | [`10xgraph`](https://github.com/10xGraph/10xGraph) (PyPI, import `tenxgraph`) | Graphs, agents, tools, state, storage |
-| Server | [`10xgraph-api`](https://github.com/10xGraph/10xgraph-api) (PyPI, command `10xgraph`) | API server, auth, jobs, deploy files |
-| Client | `10xgraph-client` (this package) | Typed TypeScript client |
-| Docs | [10xgraph.com/docs/client](https://10xgraph.com/docs/client) | Guides and reference |
+| Layer  | Package                                                                               | What it is                            |
+| ------ | ------------------------------------------------------------------------------------- | ------------------------------------- |
+| Core   | [`10xgraph`](https://github.com/10xGraph/10xGraph) (PyPI, import `tenxgraph`)         | Graphs, agents, tools, state, storage |
+| Server | [`10xgraph-api`](https://github.com/10xGraph/10xgraph-api) (PyPI, command `10xgraph`) | API server, auth, jobs, deploy files  |
+| Client | `10xgraph-client` (this package)                                                      | Typed TypeScript client               |
+| Docs   | [10xgraph.com/docs/client](https://10xgraph.com/docs/client)                          | Guides and reference                  |
 
 Start a local server with `10xgraph dev`. For a Next.js or React app see
 [Next.js and React](https://10xgraph.com/docs/client/nextjs-and-react).
