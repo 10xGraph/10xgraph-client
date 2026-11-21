@@ -31,6 +31,15 @@ export interface GraphRealtimeOptions {
   tools_tags: boolean;
 }
 
+/** The model names a run may pick for one agent node (names only, no keys or URLs). */
+export interface GraphModelChoice {
+  /** The entry used when the run config names none. */
+  default: string;
+  names: string[];
+  /** Run config key that carries the chosen name (default `model`). */
+  config_key: string;
+}
+
 export interface GraphInfo {
   node_count: number;
   edge_count: number;
@@ -47,6 +56,8 @@ export interface GraphInfo {
   state_fields: string[] | null;
   /** Live options the server honors; null when the graph is not a realtime agent. */
   realtime_options?: GraphRealtimeOptions | null;
+  /** Per agent node, the model names a run may pick with `config[config_key]`. Absent on older servers. */
+  models?: Record<string, GraphModelChoice>;
 }
 
 export interface GraphData {
