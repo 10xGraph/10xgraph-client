@@ -402,3 +402,63 @@ describe('Invoke thread id handling in the tool loop', () => {
     expect(callerConfig).toEqual({ thread_id: 'caller-thread' });
   });
 });
+
+describe('Invoke result thread_id and run_id', () => {
+  const body = (data: Record<string, any>) => ({
+    data: { messages: [], ...data },
+    metadata: { request_id: 'r', timestamp: new Date().toISOString(), message: 'OK' },
+  });
+  const call = async (data: Record<string, any>) => {
+    global.fetch = vi.fn().mockResolvedValueOnce({ ok: true, json: async () => body(data) }) as any;
+    const client = new TenxGraphClient({ baseUrl: 'http://localhost:8000', debug: false });
+    return client.invoke([Message.text_message('Hi', 'user')]);
+  };
+
+  it('exposes thread_id and run_id when the server sends them', async () => {
+    const result = await call({
+      thread_id: 't-top',
+      run_id: 'run-1',
+      meta: { is_new_thread: true, thread_id: 't-top' },
+    });
+    expect(result.thread_id).toBe('t-top');
+    expect(result.run_id).toBe('run-1');
+    expect(result.meta.thread_id).toBe('t-top');
+  });
+
+  it('falls back to meta.thread_id on older servers', async () => {
+    const result = await call({ meta: { is_new_thread: true, thread_id: 't-meta' } });
+    expect(result.thread_id).toBe('t-meta');
+    expect(result.run_id).toBeUndefined();
+  });
+
+  it('reuses the top-level thread_id on the tool round trip', async () => {
+    const toolMsg = {
+      message_id: '1',
+      role: 'assistant',
+      content: [
+        { type: 'remote_tool_call', id: 'c1', name: 'test_tool', args: {}, tool_type: 'remote' },
+      ],
+      delta: false,
+      timestamp: Date.now(),
+      metadata: {},
+    };
+    const done = { ...toolMsg, message_id: '2', content: [{ type: 'text', text: 'Done' }] };
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => body({ messages: [toolMsg], thread_id: 't-top', run_id: 'r1' }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => body({ messages: [done], thread_id: 't-top', run_id: 'r2' }),
+      });
+    global.fetch = fetchMock as any;
+    const client = new TenxGraphClient({ baseUrl: 'http://localhost:8000', debug: false });
+    client.registerToolHandler('test_tool', async () => ({ result: 'ok' }));
+    const result = await client.invoke([Message.text_message('Hi', 'user')]);
+    expect(JSON.parse(fetchMock.mock.calls[1][1].body).config.thread_id).toBe('t-top');
+    expect(result.thread_id).toBe('t-top');
+    expect(result.run_id).toBe('r2');
+  });
+});

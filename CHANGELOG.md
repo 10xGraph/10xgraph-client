@@ -26,6 +26,12 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [1.1.0] - Unreleased
+
+### Added
+
+- `invoke()` result has top-level `thread_id` and `run_id`, the same names as on stream events (`thread_id` falls back to `meta.thread_id` on older servers; `meta` is kept).
+
 ## [1.0.0] - 2026-11-16
 
 The first stable release of `10xgraph-client`. Use it with `10xgraph-api` 1.0 (same `major.minor`).

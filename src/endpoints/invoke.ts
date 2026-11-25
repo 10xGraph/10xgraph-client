@@ -49,6 +49,9 @@ export interface InvokeResponse {
     state?: AgentState;
     context?: Message[];
     summary?: string | null;
+    /** Same as the `thread_id` / `run_id` on every stream event. Older servers send only `meta`. */
+    thread_id?: string;
+    run_id?: string;
     meta: InvokeMetadata;
   };
   metadata: {
@@ -64,6 +67,10 @@ export interface InvokeResult {
   state?: AgentState;
   context?: Message[];
   summary?: string | null;
+  /** Thread the run used (server-assigned when the caller sent none). Same name as on stream events. */
+  thread_id: string;
+  /** Run id of the last response; absent on older servers. */
+  run_id?: string;
   meta: InvokeMetadata;
   all_messages: Message[]; // All messages including intermediate steps
   iterations: number;
@@ -246,7 +253,7 @@ export async function invoke(
 
     // The server assigns a thread id when the caller omits one; reuse it so the
     // tool round-trip stays on the same thread. A caller-supplied id is never replaced.
-    const returnedThreadId = response.data.meta?.thread_id;
+    const returnedThreadId = response.data.thread_id ?? response.data.meta?.thread_id;
     if (returnedThreadId && !config?.thread_id) {
       config = { ...(config ?? {}), thread_id: returnedThreadId };
     }
@@ -327,6 +334,8 @@ export async function invoke(
     state: lastResponse?.data.state,
     context: lastResponse?.data.context,
     summary: lastResponse?.data.summary,
+    thread_id: lastResponse?.data.thread_id ?? lastResponse?.data.meta?.thread_id ?? '',
+    run_id: lastResponse?.data.run_id,
     meta: lastResponse?.data.meta || { is_new_thread: false, thread_id: '' },
     all_messages: allMessages,
     iterations,
